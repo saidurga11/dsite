@@ -1,0 +1,14 @@
+service: leverage
+owner: data_science
+queue_name: PULSE_LEVERAGE_METRICS_QUEUE
+
+metrics:
+  - name: tagged
+    type: counter
+    deduplicate: true
+    description: "Transactions processed by tagging"
+
+  - name: match_latency_ms
+    type: timing
+    deduplicate: false
+    description: "Match latency in milliseconds"
