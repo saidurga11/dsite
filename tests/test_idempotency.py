@@ -4,7 +4,7 @@ import re
 import pytest
 
 from pulse import AirflowContext, Metric, MetricType
-from pulse.idempotency import build_idempotency_key
+from pulse.utils import build_idempotency_key
 
 
 class TestBuildIdempotencyKey:
