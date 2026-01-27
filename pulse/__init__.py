@@ -19,13 +19,13 @@ Usage in tests:
 """
 
 from pulse.client import AggregationMonitoringService
-from pulse.constants import MetricType
 from pulse.exceptions import ConfigurationError, PulseError, ValidationError
 from pulse.models import AirflowContext
 from pulse.queue_adapter import MockQueueAdapter
 from pulse.registry import (
     METRICS_REGISTRY,
     Metric,
+    MetricType,
     Owners,
     PulseQueues,
     ServiceSchema,

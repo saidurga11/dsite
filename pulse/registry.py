@@ -1,10 +1,25 @@
-"""Python-based metrics registry for the Pulse SDK."""
+"""Metrics registry and constants for the Pulse SDK."""
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-from pulse.constants import MetricType
+
+class MetricType(str, Enum):
+    """Supported metric types."""
+
+    COUNTER = "counter"
+    GAUGE = "gauge"
+    TIMING = "timing"
+
+
+# Validation limits
+MAX_METRIC_NAME_LENGTH = 255
+MAX_ENTITY_ID_LENGTH = 512
+
+# Metric name must start with letter, then letters/numbers/underscores/dots/hyphens
+METRIC_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.\-]*$")
 
 
 class PulseQueues(str, Enum):
@@ -83,15 +98,7 @@ METRICS_REGISTRY: list[ServiceSchema] = [
 
 
 def get_service_registry(service: str) -> Optional[ServiceSchema]:
-    """
-    Get a service registration by name.
-
-    Args:
-        service: The service name to look up
-
-    Returns:
-        The ServiceSchema if found, None otherwise
-    """
+    """Get a service registration by name."""
     for schema in METRICS_REGISTRY:
         if schema.service == service:
             return schema

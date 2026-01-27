@@ -4,10 +4,9 @@ import math
 import uuid
 from typing import Any
 
-from pulse.constants import MAX_ENTITY_ID_LENGTH, MAX_METRIC_NAME_LENGTH, METRIC_NAME_PATTERN
 from pulse.exceptions import ValidationError
 from pulse.models import AirflowContext
-from pulse.registry import Metric, ServiceSchema
+from pulse.registry import MAX_ENTITY_ID_LENGTH, MAX_METRIC_NAME_LENGTH, METRIC_NAME_PATTERN, Metric, ServiceSchema
 
 
 def validate_metric(metric_name: str, service: ServiceSchema) -> Metric:

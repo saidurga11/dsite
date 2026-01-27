@@ -3,9 +3,8 @@
 import pytest
 
 from pulse import Metric, MetricType
-from pulse.constants import MAX_ENTITY_ID_LENGTH, MAX_METRIC_NAME_LENGTH
 from pulse.exceptions import ValidationError
-from pulse.registry import Owners, PulseQueues, ServiceSchema
+from pulse.registry import MAX_ENTITY_ID_LENGTH, MAX_METRIC_NAME_LENGTH, Owners, PulseQueues, ServiceSchema
 from pulse.utils import validate_entity_id, validate_metric, validate_value
 
 
