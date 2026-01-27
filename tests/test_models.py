@@ -2,13 +2,8 @@
 
 import pytest
 
-from pulse.constants import MetricType
-from pulse.models import (
-    AirflowContext,
-    MetricDefinition,
-    MetricMessage,
-    ServiceRegistration,
-)
+from pulse import AirflowContext
+from pulse.models import MetricMessage
 
 
 class TestAirflowContext:
@@ -47,86 +42,7 @@ class TestAirflowContext:
     def test_context_hashable(self) -> None:
         """Test that AirflowContext is hashable."""
         context = AirflowContext("dag", "task", "run")
-        # Should not raise
-        hash(context)
-
-
-class TestMetricDefinition:
-    """Tests for MetricDefinition dataclass."""
-
-    def test_create_counter_metric(self) -> None:
-        """Test creating a counter metric definition."""
-        metric = MetricDefinition(
-            name="transactions",
-            metric_type=MetricType.COUNTER,
-            deduplicate=True,
-            description="Transaction count",
-        )
-
-        assert metric.name == "transactions"
-        assert metric.metric_type == MetricType.COUNTER
-        assert metric.deduplicate is True
-        assert metric.description == "Transaction count"
-
-    def test_create_timing_metric(self) -> None:
-        """Test creating a timing metric definition."""
-        metric = MetricDefinition(
-            name="latency_ms",
-            metric_type=MetricType.TIMING,
-            deduplicate=False,
-        )
-
-        assert metric.name == "latency_ms"
-        assert metric.metric_type == MetricType.TIMING
-        assert metric.deduplicate is False
-        assert metric.description == ""  # Default value
-
-    def test_metric_is_frozen(self) -> None:
-        """Test that MetricDefinition is immutable."""
-        metric = MetricDefinition(
-            name="test",
-            metric_type=MetricType.GAUGE,
-            deduplicate=True,
-        )
-
-        with pytest.raises(AttributeError):
-            metric.name = "new_name"  # type: ignore
-
-
-class TestServiceRegistration:
-    """Tests for ServiceRegistration dataclass."""
-
-    def test_create_service_registration(self) -> None:
-        """Test creating a service registration."""
-        metrics = {
-            "counter": MetricDefinition(
-                name="counter",
-                metric_type=MetricType.COUNTER,
-                deduplicate=True,
-            )
-        }
-
-        registration = ServiceRegistration(
-            service="my_service",
-            owner="my_team",
-            queue_name="MY_QUEUE",
-            metrics=metrics,
-        )
-
-        assert registration.service == "my_service"
-        assert registration.owner == "my_team"
-        assert registration.queue_name == "MY_QUEUE"
-        assert "counter" in registration.metrics
-
-    def test_registration_with_empty_metrics(self) -> None:
-        """Test creating registration with no metrics."""
-        registration = ServiceRegistration(
-            service="my_service",
-            owner="my_team",
-            queue_name="MY_QUEUE",
-        )
-
-        assert registration.metrics == {}
+        hash(context)  # Should not raise
 
 
 class TestMetricMessage:

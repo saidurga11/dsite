@@ -2,276 +2,184 @@
 
 import pytest
 
-from pulse.constants import (
-    MAX_ENTITY_ID_LENGTH,
-    MAX_METRIC_NAME_LENGTH,
-    MetricType,
-)
+from pulse import Metric, MetricType
+from pulse.constants import MAX_ENTITY_ID_LENGTH, MAX_METRIC_NAME_LENGTH
 from pulse.exceptions import ValidationError
-from pulse.models import MetricDefinition
-from pulse.validators import (
-    EntityIdValidator,
-    MetricValidator,
-    ValueValidator,
-)
+from pulse.registry import Owners, PulseQueues, ServiceSchema
+from pulse.validators import validate_entity_id, validate_metric, validate_value
 
 
-class TestMetricValidator:
-    """Tests for MetricValidator."""
+@pytest.fixture
+def sample_service() -> ServiceSchema:
+    """Create a sample service for testing."""
+    return ServiceSchema(
+        service="test",
+        queue_name=PulseQueues.LEVERAGE_METRICS,
+        owner=Owners.DATA_SCIENCE,
+        metrics=(
+            Metric(name="tagged", type=MetricType.COUNTER, deduplicate=True),
+            Metric(name="latency_ms", type=MetricType.TIMING, deduplicate=False),
+        ),
+    )
 
-    @pytest.fixture
-    def registered_metrics(self) -> dict[str, MetricDefinition]:
-        """Create sample registered metrics."""
-        return {
-            "tagged": MetricDefinition(
-                name="tagged",
-                metric_type=MetricType.COUNTER,
-                deduplicate=True,
-            ),
-            "latency_ms": MetricDefinition(
-                name="latency_ms",
-                metric_type=MetricType.TIMING,
-                deduplicate=False,
-            ),
-        }
 
-    @pytest.fixture
-    def validator(
-        self, registered_metrics: dict[str, MetricDefinition]
-    ) -> MetricValidator:
-        """Create a MetricValidator with registered metrics."""
-        return MetricValidator(registered_metrics)
+class TestValidateMetric:
+    """Tests for validate_metric function."""
 
-    def test_validate_registered_metric(self, validator: MetricValidator) -> None:
-        """Test validating a registered metric name."""
-        result = validator.validate("tagged")
+    def test_validate_registered_metric(self, sample_service: ServiceSchema) -> None:
+        """Test validating a registered metric."""
+        metric = validate_metric("tagged", sample_service)
+        assert metric.name == "tagged"
+        assert metric.type == MetricType.COUNTER
 
-        assert result.name == "tagged"
-        assert result.metric_type == MetricType.COUNTER
-
-    def test_validate_unregistered_metric_raises(
-        self, validator: MetricValidator
-    ) -> None:
+    def test_validate_unregistered_metric_raises(self, sample_service: ServiceSchema) -> None:
         """Test that unregistered metric raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validator.validate("unknown_metric")
-
+            validate_metric("unknown", sample_service)
         assert "not registered" in str(exc_info.value)
 
-    def test_validate_empty_metric_name_raises(
-        self, validator: MetricValidator
-    ) -> None:
+    def test_validate_empty_metric_name_raises(self, sample_service: ServiceSchema) -> None:
         """Test that empty metric name raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validator.validate("")
-
+            validate_metric("", sample_service)
         assert "cannot be empty" in str(exc_info.value)
 
-    def test_validate_metric_name_too_long_raises(
-        self, validator: MetricValidator
-    ) -> None:
-        """Test that metric name exceeding max length raises ValidationError."""
+    def test_validate_metric_name_too_long_raises(self, sample_service: ServiceSchema) -> None:
+        """Test that too long metric name raises ValidationError."""
         long_name = "a" * (MAX_METRIC_NAME_LENGTH + 1)
-
         with pytest.raises(ValidationError) as exc_info:
-            validator.validate(long_name)
+            validate_metric(long_name, sample_service)
+        assert "maximum length" in str(exc_info.value)
 
-        assert "exceeds maximum length" in str(exc_info.value)
-
-    def test_validate_metric_name_invalid_chars_raises(
-        self, validator: MetricValidator
-    ) -> None:
-        """Test that metric name with invalid characters raises ValidationError."""
+    def test_validate_metric_name_invalid_chars_raises(self, sample_service: ServiceSchema) -> None:
+        """Test that invalid characters raise ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validator.validate("invalid metric!")
-
+            validate_metric("test@metric", sample_service)
         assert "invalid characters" in str(exc_info.value)
 
-    def test_validate_metric_name_starting_with_number_raises(
-        self, validator: MetricValidator
-    ) -> None:
-        """Test that metric name starting with number raises ValidationError."""
+    def test_validate_metric_name_starting_with_number_raises(self, sample_service: ServiceSchema) -> None:
+        """Test that metric starting with number raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validator.validate("123metric")
-
+            validate_metric("1test", sample_service)
         assert "invalid characters" in str(exc_info.value)
 
-    def test_validate_metric_name_non_string_raises(
-        self, validator: MetricValidator
-    ) -> None:
+    def test_validate_metric_name_non_string_raises(self, sample_service: ServiceSchema) -> None:
         """Test that non-string metric name raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validator.validate(123)  # type: ignore
-
+            validate_metric(123, sample_service)  # type: ignore
         assert "must be a string" in str(exc_info.value)
 
 
-class TestValueValidator:
-    """Tests for ValueValidator."""
+class TestValidateValue:
+    """Tests for validate_value function."""
 
     def test_validate_int(self) -> None:
         """Test validating an integer value."""
-        result = ValueValidator.validate(42)
-
-        assert result == 42.0
-        assert isinstance(result, float)
+        assert validate_value(42) == 42.0
 
     def test_validate_float(self) -> None:
         """Test validating a float value."""
-        result = ValueValidator.validate(3.14)
-
-        assert result == 3.14
+        assert validate_value(3.14) == 3.14
 
     def test_validate_zero(self) -> None:
         """Test validating zero."""
-        result = ValueValidator.validate(0)
-
-        assert result == 0.0
+        assert validate_value(0) == 0.0
 
     def test_validate_negative(self) -> None:
         """Test validating negative value."""
-        result = ValueValidator.validate(-10.5)
-
-        assert result == -10.5
+        assert validate_value(-10.5) == -10.5
 
     def test_validate_none_raises(self) -> None:
-        """Test that None value raises ValidationError."""
+        """Test that None raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            ValueValidator.validate(None)
-
+            validate_value(None)
         assert "cannot be None" in str(exc_info.value)
 
     def test_validate_string_raises(self) -> None:
-        """Test that string value raises ValidationError."""
+        """Test that string raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            ValueValidator.validate("42")
-
+            validate_value("42")  # type: ignore
         assert "must be numeric" in str(exc_info.value)
 
     def test_validate_nan_raises(self) -> None:
-        """Test that NaN value raises ValidationError."""
+        """Test that NaN raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            ValueValidator.validate(float("nan"))
-
+            validate_value(float("nan"))
         assert "cannot be NaN" in str(exc_info.value)
 
     def test_validate_positive_infinity_raises(self) -> None:
         """Test that positive infinity raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            ValueValidator.validate(float("inf"))
-
+            validate_value(float("inf"))
         assert "cannot be infinite" in str(exc_info.value)
 
     def test_validate_negative_infinity_raises(self) -> None:
         """Test that negative infinity raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            ValueValidator.validate(float("-inf"))
-
+            validate_value(float("-inf"))
         assert "cannot be infinite" in str(exc_info.value)
 
     def test_validate_list_raises(self) -> None:
-        """Test that list value raises ValidationError."""
+        """Test that list raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            ValueValidator.validate([1, 2, 3])
-
+            validate_value([1, 2, 3])  # type: ignore
         assert "must be numeric" in str(exc_info.value)
 
 
-class TestEntityIdValidator:
-    """Tests for EntityIdValidator."""
+class TestValidateEntityId:
+    """Tests for validate_entity_id function."""
 
     @pytest.fixture
-    def dedup_metric(self) -> MetricDefinition:
-        """Create a metric with deduplication enabled."""
-        return MetricDefinition(
-            name="tagged",
-            metric_type=MetricType.COUNTER,
-            deduplicate=True,
-        )
+    def dedup_metric(self) -> Metric:
+        """Metric with deduplication enabled."""
+        return Metric(name="dedup", deduplicate=True)
 
     @pytest.fixture
-    def non_dedup_metric(self) -> MetricDefinition:
-        """Create a metric with deduplication disabled."""
-        return MetricDefinition(
-            name="latency_ms",
-            metric_type=MetricType.TIMING,
-            deduplicate=False,
-        )
+    def no_dedup_metric(self) -> Metric:
+        """Metric with deduplication disabled."""
+        return Metric(name="no_dedup", deduplicate=False)
 
-    def test_validate_valid_entity_id_with_dedup(
-        self, dedup_metric: MetricDefinition
-    ) -> None:
-        """Test validating a valid entity_id when dedup is enabled."""
-        result = EntityIdValidator.validate("tx_abc123", dedup_metric)
+    def test_validate_valid_entity_id_with_dedup(self, dedup_metric: Metric) -> None:
+        """Test validating a valid entity ID with dedup enabled."""
+        assert validate_entity_id("tx_123", dedup_metric) == "tx_123"
 
-        assert result == "tx_abc123"
-
-    def test_validate_empty_entity_id_when_dedup_enabled_raises(
-        self, dedup_metric: MetricDefinition
-    ) -> None:
-        """Test that empty entity_id raises ValidationError when dedup enabled."""
+    def test_validate_empty_entity_id_when_dedup_enabled_raises(self, dedup_metric: Metric) -> None:
+        """Test that empty entity_id raises when dedup enabled."""
         with pytest.raises(ValidationError) as exc_info:
-            EntityIdValidator.validate("", dedup_metric)
-
+            validate_entity_id("", dedup_metric)
         assert "cannot be empty" in str(exc_info.value)
 
-    def test_validate_whitespace_entity_id_when_dedup_enabled_raises(
-        self, dedup_metric: MetricDefinition
-    ) -> None:
-        """Test that whitespace entity_id raises ValidationError when dedup enabled."""
+    def test_validate_whitespace_entity_id_when_dedup_enabled_raises(self, dedup_metric: Metric) -> None:
+        """Test that whitespace entity_id raises when dedup enabled."""
         with pytest.raises(ValidationError) as exc_info:
-            EntityIdValidator.validate("   ", dedup_metric)
-
+            validate_entity_id("   ", dedup_metric)
         assert "cannot be empty" in str(exc_info.value)
 
-    def test_validate_none_entity_id_when_dedup_enabled_raises(
-        self, dedup_metric: MetricDefinition
-    ) -> None:
-        """Test that None entity_id raises ValidationError when dedup enabled."""
+    def test_validate_none_entity_id_when_dedup_enabled_raises(self, dedup_metric: Metric) -> None:
+        """Test that None entity_id raises when dedup enabled."""
         with pytest.raises(ValidationError) as exc_info:
-            EntityIdValidator.validate(None, dedup_metric)
-
+            validate_entity_id(None, dedup_metric)
         assert "is required" in str(exc_info.value)
 
-    def test_validate_empty_entity_id_when_dedup_disabled(
-        self, non_dedup_metric: MetricDefinition
-    ) -> None:
+    def test_validate_empty_entity_id_when_dedup_disabled(self, no_dedup_metric: Metric) -> None:
         """Test that empty entity_id is allowed when dedup disabled."""
-        result = EntityIdValidator.validate("", non_dedup_metric)
+        assert validate_entity_id("", no_dedup_metric) == ""
 
-        assert result == ""
-
-    def test_validate_none_entity_id_when_dedup_disabled(
-        self, non_dedup_metric: MetricDefinition
-    ) -> None:
+    def test_validate_none_entity_id_when_dedup_disabled(self, no_dedup_metric: Metric) -> None:
         """Test that None entity_id is allowed when dedup disabled."""
-        result = EntityIdValidator.validate(None, non_dedup_metric)
+        assert validate_entity_id(None, no_dedup_metric) == ""
 
-        assert result == ""
-
-    def test_validate_entity_id_too_long_raises(
-        self, dedup_metric: MetricDefinition
-    ) -> None:
-        """Test that entity_id exceeding max length raises ValidationError."""
-        long_id = "x" * (MAX_ENTITY_ID_LENGTH + 1)
-
+    def test_validate_entity_id_too_long_raises(self, dedup_metric: Metric) -> None:
+        """Test that too long entity_id raises ValidationError."""
+        long_id = "a" * (MAX_ENTITY_ID_LENGTH + 1)
         with pytest.raises(ValidationError) as exc_info:
-            EntityIdValidator.validate(long_id, dedup_metric)
+            validate_entity_id(long_id, dedup_metric)
+        assert "maximum length" in str(exc_info.value)
 
-        assert "exceeds maximum length" in str(exc_info.value)
-
-    def test_validate_converts_int_to_string(
-        self, dedup_metric: MetricDefinition
-    ) -> None:
+    def test_validate_converts_int_to_string(self, dedup_metric: Metric) -> None:
         """Test that integer entity_id is converted to string."""
-        result = EntityIdValidator.validate(12345, dedup_metric)  # type: ignore
+        assert validate_entity_id(12345, dedup_metric) == "12345"
 
-        assert result == "12345"
-
-    def test_validate_valid_entity_id_when_dedup_disabled(
-        self, non_dedup_metric: MetricDefinition
-    ) -> None:
-        """Test validating valid entity_id when dedup disabled."""
-        result = EntityIdValidator.validate("tx_abc123", non_dedup_metric)
-
-        assert result == "tx_abc123"
+    def test_validate_valid_entity_id_when_dedup_disabled(self, no_dedup_metric: Metric) -> None:
+        """Test validating entity_id when dedup disabled."""
+        assert validate_entity_id("tx_123", no_dedup_metric) == "tx_123"

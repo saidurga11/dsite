@@ -53,19 +53,18 @@ class TestAggregationMonitoringServiceInit:
 
         assert "not registered" in str(exc_info.value)
 
-    def test_init_with_none_airflow_context(
+    def test_init_without_context_outside_airflow_raises(
         self,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test that None airflow_context raises ConfigurationError."""
-        with pytest.raises(ConfigurationError) as exc_info:
+        """Test that missing context outside Airflow raises RuntimeError."""
+        with pytest.raises(RuntimeError) as exc_info:
             AggregationMonitoringService(
                 service="leverage",
-                airflow_context=None,  # type: ignore
                 queue_adapter=mock_queue_adapter,
             )
 
-        assert "cannot be None" in str(exc_info.value)
+        assert "Airflow" in str(exc_info.value)
 
     def test_init_with_invalid_airflow_context_type(
         self,
@@ -488,3 +487,16 @@ class TestAggregationMonitoringServiceIntegration:
 
         assert result == 3
         assert len(mock_queue_adapter.messages) == 3
+
+
+class TestAirflowContextAutoDetect:
+    """Tests for AirflowContext.from_airflow auto-detection."""
+
+    def test_from_airflow_without_airflow_installed(self) -> None:
+        """Test that from_airflow raises RuntimeError when Airflow not installed."""
+        # This test runs outside Airflow, so it should raise RuntimeError
+        with pytest.raises(RuntimeError) as exc_info:
+            AirflowContext.from_airflow()
+
+        # Should mention Airflow in the error
+        assert "Airflow" in str(exc_info.value)

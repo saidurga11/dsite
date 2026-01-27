@@ -1,75 +1,59 @@
 """Data models for the Pulse SDK."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
-
-from pulse.constants import MetricType
 
 
 @dataclass(frozen=True)
 class AirflowContext:
-    """
-    Context from Airflow for idempotency key generation.
-
-    Attributes:
-        dag_id: The DAG identifier
-        task_id: The task identifier within the DAG
-        run_id: The run identifier (e.g., "scheduled__2026-01-08T14:00:00")
-    """
+    """Context from Airflow for idempotency key generation."""
 
     dag_id: str
     task_id: str
     run_id: str
 
+    @classmethod
+    def from_airflow(cls) -> "AirflowContext":
+        """
+        Auto-detect context from the current Airflow task execution.
 
-@dataclass(frozen=True)
-class MetricDefinition:
-    """
-    Definition of a registered metric.
+        Raises:
+            RuntimeError: If not running inside an Airflow task
+        """
+        try:
+            from airflow.operators.python import get_current_context
+        except ImportError:
+            raise RuntimeError(
+                "Airflow is not installed. Install airflow or provide "
+                "AirflowContext manually."
+            )
 
-    Attributes:
-        name: Metric name
-        metric_type: Type of metric (counter, gauge, timing)
-        deduplicate: Whether to deduplicate based on idempotency key
-        description: Human-readable description
-    """
+        try:
+            context = get_current_context()
+        except Exception:
+            raise RuntimeError(
+                "Not running inside an Airflow task. Cannot auto-detect context. "
+                "Provide AirflowContext manually for testing."
+            )
 
-    name: str
-    metric_type: MetricType
-    deduplicate: bool
-    description: str = ""
+        dag_run = context.get("dag_run")
+        task_instance = context.get("task_instance") or context.get("ti")
 
+        if dag_run is None or task_instance is None:
+            raise RuntimeError(
+                "Could not get dag_run or task_instance from Airflow context."
+            )
 
-@dataclass(frozen=True)
-class ServiceRegistration:
-    """
-    Service registration configuration.
-
-    Attributes:
-        service: Service name
-        owner: Team or individual owning the service
-        queue_name: Name of the Redis queue for this service
-        metrics: Dictionary of metric name to MetricDefinition
-    """
-
-    service: str
-    owner: str
-    queue_name: str
-    metrics: dict[str, MetricDefinition] = field(default_factory=dict)
+        return cls(
+            dag_id=task_instance.dag_id,
+            task_id=task_instance.task_id,
+            run_id=dag_run.run_id,
+        )
 
 
 @dataclass(frozen=True)
 class MetricMessage:
-    """
-    Message to be sent to the queue.
-
-    Attributes:
-        timestamp: ISO 8601 timestamp
-        metric_name: Name of the metric
-        value: Numeric value
-        entity_id: Unique entity identifier
-        idempotency_key: Key for deduplication
-    """
+    """Message to be sent to the queue."""
 
     timestamp: str
     metric_name: str

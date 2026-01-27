@@ -1,72 +1,16 @@
-"""Tests for Pulse SDK registration loader."""
+"""Tests for Pulse SDK registry."""
 
 import pytest
 
-from pulse.constants import MetricType
-from pulse.exceptions import ConfigurationError
-from pulse.registration import RegistrationLoader
+from pulse import Metric, MetricType
 from pulse.registry import (
     METRICS_REGISTRY,
-    Metric,
     Owners,
     PulseQueues,
     ServiceSchema,
     get_service_registry,
     list_services,
 )
-
-
-class TestRegistrationLoader:
-    """Tests for RegistrationLoader."""
-
-    def test_load_valid_registration(self) -> None:
-        """Test loading a valid service registration."""
-        loader = RegistrationLoader()
-
-        registration = loader.load("leverage")
-
-        assert registration.service == "leverage"
-        assert registration.owner == "data_science"
-        assert registration.queue_name == "PULSE_LEVERAGE_METRICS_QUEUE"
-        assert len(registration.metrics) == 2
-        assert "tagged" in registration.metrics
-        assert "match_latency_ms" in registration.metrics
-
-    def test_load_metric_types_correctly(self) -> None:
-        """Test that metric types are loaded correctly."""
-        loader = RegistrationLoader()
-
-        registration = loader.load("leverage")
-
-        assert registration.metrics["tagged"].metric_type == MetricType.COUNTER
-        assert registration.metrics["match_latency_ms"].metric_type == MetricType.TIMING
-
-    def test_load_deduplicate_correctly(self) -> None:
-        """Test that deduplicate flag is loaded correctly."""
-        loader = RegistrationLoader()
-
-        registration = loader.load("leverage")
-
-        assert registration.metrics["tagged"].deduplicate is True
-        assert registration.metrics["match_latency_ms"].deduplicate is False
-
-    def test_load_nonexistent_service_raises(self) -> None:
-        """Test that loading non-existent service raises ConfigurationError."""
-        loader = RegistrationLoader()
-
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("nonexistent")
-
-        assert "not registered" in str(exc_info.value)
-
-    def test_load_empty_service_name_raises(self) -> None:
-        """Test that empty service name raises ConfigurationError."""
-        loader = RegistrationLoader()
-
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("")
-
-        assert "cannot be empty" in str(exc_info.value)
 
 
 class TestServiceSchema:
@@ -78,9 +22,7 @@ class TestServiceSchema:
             service="test_service",
             queue_name=PulseQueues.LEVERAGE_METRICS,
             owner=Owners.DATA_SCIENCE,
-            metrics=(
-                Metric(name="test_metric", type=MetricType.COUNTER),
-            ),
+            metrics=(Metric(name="test_metric", type=MetricType.COUNTER),),
         )
 
         assert schema.service == "test_service"
@@ -113,9 +55,7 @@ class TestServiceSchema:
             service="test",
             queue_name=PulseQueues.LEVERAGE_METRICS,
             owner=Owners.DATA_SCIENCE,
-            metrics=(
-                Metric(name="metric_a", type=MetricType.COUNTER),
-            ),
+            metrics=(Metric(name="metric_a", type=MetricType.COUNTER),),
         )
 
         assert schema.has_metric("metric_a") is True
