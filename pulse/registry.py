@@ -44,7 +44,6 @@ class Metric:
 
     name: str
     type: MetricType = MetricType.COUNTER
-    deduplicate: bool = True
     description: str = ""
 
 
@@ -79,18 +78,8 @@ METRICS_REGISTRY: list[ServiceSchema] = [
         queue_name=PulseQueues.LEVERAGE_METRICS,
         owner=Owners.DATA_SCIENCE,
         metrics=(
-            Metric(
-                name="tagged",
-                type=MetricType.COUNTER,
-                deduplicate=True,
-                description="Transactions processed by tagging",
-            ),
-            Metric(
-                name="match_latency_ms",
-                type=MetricType.TIMING,
-                deduplicate=False,
-                description="Match latency in milliseconds",
-            ),
+            Metric(name="tagged", type=MetricType.COUNTER),
+            Metric(name="match_latency_ms", type=MetricType.TIMING),
         ),
     ),
     # Add more services here...

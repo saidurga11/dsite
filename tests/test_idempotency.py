@@ -1,9 +1,8 @@
 """Tests for Pulse SDK idempotency module."""
 
-import re
 import pytest
 
-from pulse import AirflowContext, Metric, MetricType
+from pulse import AirflowContext
 from pulse.utils import build_idempotency_key
 
 
@@ -19,21 +18,9 @@ class TestBuildIdempotencyKey:
             run_id="scheduled__2026-01-08T14:00:00",
         )
 
-    @pytest.fixture
-    def dedup_metric(self) -> Metric:
-        """Metric with deduplication enabled."""
-        return Metric(name="tagged", type=MetricType.COUNTER, deduplicate=True)
-
-    @pytest.fixture
-    def no_dedup_metric(self) -> Metric:
-        """Metric with deduplication disabled."""
-        return Metric(name="latency_ms", type=MetricType.TIMING, deduplicate=False)
-
-    def test_build_deterministic_key_with_dedup(
-        self, context: AirflowContext, dedup_metric: Metric
-    ) -> None:
-        """Test that dedup-enabled metrics produce deterministic keys."""
-        key = build_idempotency_key(context, "tagged", "tx_abc123", dedup_metric)
+    def test_build_deterministic_key(self, context: AirflowContext) -> None:
+        """Test that build produces deterministic keys."""
+        key = build_idempotency_key(context, "tagged", "tx_abc123")
 
         expected = (
             "leverage_tagging_dag_"
@@ -44,48 +31,29 @@ class TestBuildIdempotencyKey:
         )
         assert key == expected
 
-    def test_build_same_inputs_produce_same_key(
-        self, context: AirflowContext, dedup_metric: Metric
-    ) -> None:
+    def test_build_same_inputs_produce_same_key(self, context: AirflowContext) -> None:
         """Test that same inputs always produce the same key."""
-        key1 = build_idempotency_key(context, "tagged", "tx_123", dedup_metric)
-        key2 = build_idempotency_key(context, "tagged", "tx_123", dedup_metric)
+        key1 = build_idempotency_key(context, "tagged", "tx_123")
+        key2 = build_idempotency_key(context, "tagged", "tx_123")
         assert key1 == key2
 
-    def test_build_different_entity_ids_produce_different_keys(
-        self, context: AirflowContext, dedup_metric: Metric
-    ) -> None:
+    def test_build_different_entity_ids_produce_different_keys(self, context: AirflowContext) -> None:
         """Test that different entity_ids produce different keys."""
-        key1 = build_idempotency_key(context, "tagged", "tx_123", dedup_metric)
-        key2 = build_idempotency_key(context, "tagged", "tx_456", dedup_metric)
+        key1 = build_idempotency_key(context, "tagged", "tx_123")
+        key2 = build_idempotency_key(context, "tagged", "tx_456")
         assert key1 != key2
 
-    def test_build_uuid_for_non_dedup_metrics(
-        self, context: AirflowContext, no_dedup_metric: Metric
-    ) -> None:
-        """Test that non-dedup metrics produce UUID keys."""
-        key = build_idempotency_key(context, "latency_ms", "tx_123", no_dedup_metric)
-
-        # UUID format: 8-4-4-4-12 hex characters
-        uuid_pattern = re.compile(
-            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-        )
-        assert uuid_pattern.match(key)
-
-    def test_build_non_dedup_produces_unique_keys(
-        self, context: AirflowContext, no_dedup_metric: Metric
-    ) -> None:
-        """Test that non-dedup metrics produce unique keys each call."""
-        key1 = build_idempotency_key(context, "latency_ms", "tx_123", no_dedup_metric)
-        key2 = build_idempotency_key(context, "latency_ms", "tx_123", no_dedup_metric)
+    def test_build_different_metrics_produce_different_keys(self, context: AirflowContext) -> None:
+        """Test that different metrics produce different keys."""
+        key1 = build_idempotency_key(context, "tagged", "tx_123")
+        key2 = build_idempotency_key(context, "latency_ms", "tx_123")
         assert key1 != key2
 
     def test_build_with_different_contexts(self) -> None:
         """Test that different contexts produce different keys."""
         context1 = AirflowContext("dag1", "task1", "run1")
         context2 = AirflowContext("dag2", "task2", "run2")
-        metric = Metric(name="test", deduplicate=True)
 
-        key1 = build_idempotency_key(context1, "test", "entity", metric)
-        key2 = build_idempotency_key(context2, "test", "entity", metric)
+        key1 = build_idempotency_key(context1, "test", "entity")
+        key2 = build_idempotency_key(context2, "test", "entity")
         assert key1 != key2

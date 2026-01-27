@@ -101,9 +101,9 @@ class AggregationMonitoringService:
             True if sent, False if rejected (duplicate or error)
         """
         # Validate
-        metric = validate_metric(metric_name, self._service)
+        validate_metric(metric_name, self._service)
         validated_value = validate_value(value)
-        validated_entity_id = validate_entity_id(entity_id, metric)
+        validated_entity_id = validate_entity_id(entity_id)
 
         # Build message
         message = MetricMessage(
@@ -112,7 +112,7 @@ class AggregationMonitoringService:
             value=validated_value,
             entity_id=validated_entity_id,
             idempotency_key=build_idempotency_key(
-                self._context, metric_name, validated_entity_id, metric
+                self._context, metric_name, validated_entity_id
             ),
         )
 
@@ -152,9 +152,9 @@ class AggregationMonitoringService:
                 entity_id = m.get("entity_id")
 
                 # Validate
-                metric = validate_metric(metric_name, self._service)
+                validate_metric(metric_name, self._service)
                 validated_value = validate_value(value)
-                validated_entity_id = validate_entity_id(entity_id, metric)
+                validated_entity_id = validate_entity_id(entity_id)
 
                 messages.append(MetricMessage(
                     timestamp=datetime.now(timezone.utc).isoformat(),
@@ -162,7 +162,7 @@ class AggregationMonitoringService:
                     value=validated_value,
                     entity_id=validated_entity_id,
                     idempotency_key=build_idempotency_key(
-                        self._context, metric_name, validated_entity_id, metric
+                        self._context, metric_name, validated_entity_id
                     ),
                 ))
             except ValidationError as e:

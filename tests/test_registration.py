@@ -71,7 +71,6 @@ class TestMetric:
 
         assert metric.name == "test"
         assert metric.type == MetricType.COUNTER
-        assert metric.deduplicate is True
         assert metric.description == ""
 
     def test_create_metric_with_all_fields(self) -> None:
@@ -79,13 +78,11 @@ class TestMetric:
         metric = Metric(
             name="latency",
             type=MetricType.TIMING,
-            deduplicate=False,
             description="Request latency",
         )
 
         assert metric.name == "latency"
         assert metric.type == MetricType.TIMING
-        assert metric.deduplicate is False
         assert metric.description == "Request latency"
 
 

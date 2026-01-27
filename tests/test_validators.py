@@ -16,8 +16,8 @@ def sample_service() -> ServiceSchema:
         queue_name=PulseQueues.LEVERAGE_METRICS,
         owner=Owners.DATA_SCIENCE,
         metrics=(
-            Metric(name="tagged", type=MetricType.COUNTER, deduplicate=True),
-            Metric(name="latency_ms", type=MetricType.TIMING, deduplicate=False),
+            Metric(name="tagged", type=MetricType.COUNTER),
+            Metric(name="latency_ms", type=MetricType.TIMING),
         ),
     )
 
@@ -128,57 +128,35 @@ class TestValidateValue:
 class TestValidateEntityId:
     """Tests for validate_entity_id function."""
 
-    @pytest.fixture
-    def dedup_metric(self) -> Metric:
-        """Metric with deduplication enabled."""
-        return Metric(name="dedup", deduplicate=True)
+    def test_validate_valid_entity_id(self) -> None:
+        """Test validating a valid entity ID."""
+        assert validate_entity_id("tx_123") == "tx_123"
 
-    @pytest.fixture
-    def no_dedup_metric(self) -> Metric:
-        """Metric with deduplication disabled."""
-        return Metric(name="no_dedup", deduplicate=False)
-
-    def test_validate_valid_entity_id_with_dedup(self, dedup_metric: Metric) -> None:
-        """Test validating a valid entity ID with dedup enabled."""
-        assert validate_entity_id("tx_123", dedup_metric) == "tx_123"
-
-    def test_validate_empty_entity_id_when_dedup_enabled_raises(self, dedup_metric: Metric) -> None:
-        """Test that empty entity_id raises when dedup enabled."""
+    def test_validate_empty_entity_id_raises(self) -> None:
+        """Test that empty entity_id raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validate_entity_id("", dedup_metric)
+            validate_entity_id("")
         assert "cannot be empty" in str(exc_info.value)
 
-    def test_validate_whitespace_entity_id_when_dedup_enabled_raises(self, dedup_metric: Metric) -> None:
-        """Test that whitespace entity_id raises when dedup enabled."""
+    def test_validate_whitespace_entity_id_raises(self) -> None:
+        """Test that whitespace entity_id raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validate_entity_id("   ", dedup_metric)
+            validate_entity_id("   ")
         assert "cannot be empty" in str(exc_info.value)
 
-    def test_validate_none_entity_id_when_dedup_enabled_raises(self, dedup_metric: Metric) -> None:
-        """Test that None entity_id raises when dedup enabled."""
+    def test_validate_none_entity_id_raises(self) -> None:
+        """Test that None entity_id raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validate_entity_id(None, dedup_metric)
+            validate_entity_id(None)
         assert "is required" in str(exc_info.value)
 
-    def test_validate_empty_entity_id_when_dedup_disabled(self, no_dedup_metric: Metric) -> None:
-        """Test that empty entity_id is allowed when dedup disabled."""
-        assert validate_entity_id("", no_dedup_metric) == ""
-
-    def test_validate_none_entity_id_when_dedup_disabled(self, no_dedup_metric: Metric) -> None:
-        """Test that None entity_id is allowed when dedup disabled."""
-        assert validate_entity_id(None, no_dedup_metric) == ""
-
-    def test_validate_entity_id_too_long_raises(self, dedup_metric: Metric) -> None:
+    def test_validate_entity_id_too_long_raises(self) -> None:
         """Test that too long entity_id raises ValidationError."""
         long_id = "a" * (MAX_ENTITY_ID_LENGTH + 1)
         with pytest.raises(ValidationError) as exc_info:
-            validate_entity_id(long_id, dedup_metric)
+            validate_entity_id(long_id)
         assert "maximum length" in str(exc_info.value)
 
-    def test_validate_converts_int_to_string(self, dedup_metric: Metric) -> None:
+    def test_validate_converts_int_to_string(self) -> None:
         """Test that integer entity_id is converted to string."""
-        assert validate_entity_id(12345, dedup_metric) == "12345"
-
-    def test_validate_valid_entity_id_when_dedup_disabled(self, no_dedup_metric: Metric) -> None:
-        """Test validating entity_id when dedup disabled."""
-        assert validate_entity_id("tx_123", no_dedup_metric) == "tx_123"
+        assert validate_entity_id(12345) == "12345"

@@ -145,12 +145,12 @@ class TestAggregationMonitoringServiceRecordData:
             queue_adapter=mock_queue_adapter,
         )
 
-    def test_record_counter_with_dedup(
+    def test_record_counter_metric(
         self,
         service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test recording a counter metric with deduplication."""
+        """Test recording a counter metric."""
         result = service.recordData(
             metric_name="tagged",
             value=1,
@@ -165,27 +165,24 @@ class TestAggregationMonitoringServiceRecordData:
         assert message.value == 1.0
         assert message.entity_id == "tx_123"
 
-    def test_record_timing_without_dedup(
+    def test_record_timing_metric(
         self,
         service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test recording a timing metric without deduplication."""
-        # Record twice with same entity_id - both should succeed (no dedup)
-        result1 = service.recordData(
+        """Test recording a timing metric."""
+        result = service.recordData(
             metric_name="match_latency_ms",
             value=45.2,
             entity_id="tx_123",
         )
-        result2 = service.recordData(
-            metric_name="match_latency_ms",
-            value=50.5,
-            entity_id="tx_123",
-        )
 
-        assert result1 is True
-        assert result2 is True
-        assert len(mock_queue_adapter.messages) == 2
+        assert result is True
+        assert len(mock_queue_adapter.messages) == 1
+
+        message = mock_queue_adapter.messages[0]
+        assert message.metric_name == "match_latency_ms"
+        assert message.value == 45.2
 
     def test_record_duplicate_rejected(
         self,
@@ -226,25 +223,25 @@ class TestAggregationMonitoringServiceRecordData:
 
         assert "not registered" in str(exc_info.value)
 
-    def test_record_missing_entity_id_when_dedup_enabled(
+    def test_record_empty_entity_id_raises(
         self,
         service: AggregationMonitoringService,
     ) -> None:
-        """Test that missing entity_id raises ValidationError when dedup enabled."""
+        """Test that empty entity_id raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
             service.recordData(
                 metric_name="tagged",
                 value=1,
-                entity_id="",  # Empty
+                entity_id="",
             )
 
         assert "cannot be empty" in str(exc_info.value)
 
-    def test_record_none_entity_id_when_dedup_enabled(
+    def test_record_none_entity_id_raises(
         self,
         service: AggregationMonitoringService,
     ) -> None:
-        """Test that None entity_id raises ValidationError when dedup enabled."""
+        """Test that None entity_id raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
             service.recordData(
                 metric_name="tagged",
@@ -423,7 +420,7 @@ class TestAggregationMonitoringServiceIntegration:
             queue_adapter=mock_queue_adapter,
         )
 
-        # Record counter (with dedup)
+        # Record first metric
         result1 = service.recordData(
             metric_name="tagged",
             value=1,
@@ -431,15 +428,15 @@ class TestAggregationMonitoringServiceIntegration:
         )
         assert result1 is True
 
-        # Record timing (no dedup)
+        # Record second metric
         result2 = service.recordData(
             metric_name="match_latency_ms",
             value=45.2,
-            entity_id="tx_abc123",
+            entity_id="tx_def456",
         )
         assert result2 is True
 
-        # Try duplicate counter - should be rejected
+        # Try duplicate - should be rejected
         result3 = service.recordData(
             metric_name="tagged",
             value=1,
@@ -449,16 +446,6 @@ class TestAggregationMonitoringServiceIntegration:
 
         # Verify messages
         assert len(mock_queue_adapter.messages) == 2
-
-        # Verify counter message
-        counter_msg = mock_queue_adapter.messages[0]
-        assert counter_msg.metric_name == "tagged"
-        assert counter_msg.value == 1.0
-
-        # Verify timing message
-        timing_msg = mock_queue_adapter.messages[1]
-        assert timing_msg.metric_name == "match_latency_ms"
-        assert timing_msg.value == 45.2
 
     def test_batch_workflow(
         self,
@@ -480,7 +467,7 @@ class TestAggregationMonitoringServiceIntegration:
         metrics = [
             {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
             {"metric_name": "tagged", "value": 1, "entity_id": "tx_002"},
-            {"metric_name": "match_latency_ms", "value": 45.2, "entity_id": "tx_001"},
+            {"metric_name": "match_latency_ms", "value": 45.2, "entity_id": "tx_003"},
         ]
 
         result = service.recordDataBatch(metrics)
@@ -494,9 +481,7 @@ class TestAirflowContextAutoDetect:
 
     def test_from_airflow_without_airflow_installed(self) -> None:
         """Test that from_airflow raises RuntimeError when Airflow not installed."""
-        # This test runs outside Airflow, so it should raise RuntimeError
         with pytest.raises(RuntimeError) as exc_info:
             AirflowContext.from_airflow()
 
-        # Should mention Airflow in the error
         assert "Airflow" in str(exc_info.value)
