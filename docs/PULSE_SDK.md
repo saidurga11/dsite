@@ -9,26 +9,26 @@ The Pulse SDK allows your Airflow DAGs to emit operational metrics to PostgreSQL
 
 ## Setup: Register a New Service
 
+You need to update the Python registry and create an EQM config file.
+
 ### Step 1: Add Service to Python Registry
 
 File: `pulse/registry.py`
 
+Example (this is our actual leverage registration):
+
 ```python
-from pulse.registry import (
-    METRICS_REGISTRY,
-    Metric,
-    MetricType,
-    Owners,
-    PulseQueues,
-    ServiceSchema,
-)
-
-# Add your queue to PulseQueues enum
 class PulseQueues(str, Enum):
+    """Available Pulse queues."""
     LEVERAGE_METRICS = "PULSE_LEVERAGE_METRICS_QUEUE"
-    YOUR_SERVICE_METRICS = "PULSE_YOUR_SERVICE_METRICS_QUEUE"  # Add this
+    # Add more queues as needed
 
-# Add your service to METRICS_REGISTRY
+class Owners(str, Enum):
+    """Service owners."""
+    DATA_SCIENCE = "data_science"
+    MLE = "mle"
+    DATA_ENGINEERING = "data_engineering"
+
 METRICS_REGISTRY: list[ServiceSchema] = [
     ServiceSchema(
         service="leverage",
@@ -39,16 +39,6 @@ METRICS_REGISTRY: list[ServiceSchema] = [
             Metric(name="match_latency_ms", type=MetricType.TIMING),
         ),
     ),
-    # Add your service here
-    ServiceSchema(
-        service="your_service",
-        queue_name=PulseQueues.YOUR_SERVICE_METRICS,
-        owner=Owners.DATA_ENGINEERING,
-        metrics=(
-            Metric(name="total_tran", type=MetricType.COUNTER),
-            Metric(name="processing_time_ms", type=MetricType.TIMING),
-        ),
-    ),
 ]
 ```
 
@@ -56,46 +46,45 @@ METRICS_REGISTRY: list[ServiceSchema] = [
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `service` | Yes | Service name used in `AggregationMonitoringService(service="...")` |
-| `queue_name` | Yes | Queue from `PulseQueues` enum |
-| `owner` | Yes | Team from `Owners` enum (e.g., `DATA_SCIENCE`, `DATA_ENGINEERING`) |
-| `metrics` | Yes | Tuple of `Metric` definitions |
-
-**Metric Fields:**
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Metric name (e.g., `"total_tran"`) |
-| `type` | No | `MetricType.COUNTER` (default), `GAUGE`, or `TIMING` |
-| `description` | No | Human-readable description |
+| `service` | Yes | Must match `AggregationMonitoringService(service="...")` in your code |
+| `owner` | Yes | Team that owns this service (e.g., `Owners.DATA_SCIENCE`, `Owners.DATA_ENGINEERING`) |
+| `queue_name` | Yes | Queue from `PulseQueues` enum. Pattern: `PULSE_{SERVICE}_METRICS_QUEUE` |
+| `metrics` | Yes | Tuple of metrics this service can record |
+| `metrics.name` | Yes | Metric name (e.g., `"tagged"`) |
+| `metrics.type` | No | `MetricType.COUNTER` (default), `GAUGE`, or `TIMING` |
+| `metrics.description` | No | Human-readable description |
 
 ### Step 2: Create EQM Configuration
 
 File: `data_db_utils/entity_queue_manager/queue_managers_configs/{service}_metrics_config.yaml`
 
+Example:
+
 ```yaml
 QueueManagerConfigurations:
-  name: PULSE_YOUR_SERVICE
+  name: PULSE_LEVERAGE
   queues:
-    - PULSE_YOUR_SERVICE_METRICS_QUEUE
+    - PULSE_LEVERAGE_METRICS_QUEUE
   entity_identifier_field: row_id
   max_ttl_time: 2592000
 ```
 
+**Field Reference:**
+
 | Field | Value | Why |
 |-------|-------|-----|
-| `name` | `PULSE_YOUR_SERVICE` | Manager identifier (prefix of queue name) |
-| `queues` | `[PULSE_YOUR_SERVICE_METRICS_QUEUE]` | Must match `queue_name` in registry |
+| `name` | `PULSE_LEVERAGE` | Manager identifier (prefix of queue name) |
+| `queues` | `[PULSE_LEVERAGE_METRICS_QUEUE]` | Must match `queue_name` in registry exactly |
 | `entity_identifier_field` | `row_id` | Always use `row_id`. Enables deduplication on DAG retries |
 | `max_ttl_time` | `2592000` | 30 days in seconds. Messages expire if not consumed |
 
 ### Step 3: Submit PR
 
-Create PR with your changes to the registry and EQM config. After merge, the consumer DAG automatically discovers your queue.
+Create PR with both changes. After merge, the consumer DAG automatically discovers your queue.
 
 ---
 
-## Usage: Emit Metrics in Your DAG
+## Usage: Record Metrics in Your DAG
 
 ### Basic Pattern
 
@@ -103,18 +92,18 @@ Create PR with your changes to the registry and EQM config. After merge, the con
 from pulse import AggregationMonitoringService
 
 def process_transactions(**context):
-    # Initialize service (Airflow context auto-detected)
+    # 1. Initialize service (Airflow context auto-detected)
     monitor = AggregationMonitoringService(service="leverage")
 
-    # Your business logic
+    # 2. Your business logic - pre-aggregate the count
     transactions = fetch_transactions()
     de_mca_count = sum(1 for t in transactions if t.caller == "de" and t.category == "mca")
 
-    # Record metric with a unique entity_id
+    # 3. Record ONCE per metric per DAG run
     monitor.recordData(
         metric_name="tagged",
         value=de_mca_count,
-        entity_id="de_mca",  # Unique identifier for this metric instance
+        entity_id="de_mca",
     )
 ```
 
@@ -149,65 +138,20 @@ def process_transactions(**context):
         monitor.recordData(
             metric_name="tagged",
             value=count,
-            entity_id=f"{caller}_{category}",  # Unique per combination
+            entity_id=f"{caller}_{category}",
         )
-```
-
-### Batch Recording
-
-```python
-from pulse import AggregationMonitoringService
-
-def process_transactions(**context):
-    monitor = AggregationMonitoringService(service="leverage")
-
-    metrics = [
-        {"metric_name": "tagged", "value": 100, "entity_id": "de_mca"},
-        {"metric_name": "tagged", "value": 50, "entity_id": "mle_factor"},
-        {"metric_name": "match_latency_ms", "value": 45.2, "entity_id": "batch_1"},
-    ]
-
-    count = monitor.recordDataBatch(metrics)
-    print(f"Recorded {count} metrics")
 ```
 
 ### What NOT to Do
 
 ```python
-# ❌ WRONG: Recording inside a loop without unique entity_id
+# ❌ WRONG: Recording inside a loop
 for txn in transactions:
-    monitor.recordData("tagged", value=1, entity_id="same_id")  # Duplicates rejected!
+    monitor.recordData("tagged", value=1, entity_id=txn.id)
 
-# ✅ CORRECT: Pre-aggregate, then record once per unique entity
+# ✅ CORRECT: Pre-aggregate, then record once
 count = sum(1 for t in transactions if t.caller == "de" and t.category == "mca")
 monitor.recordData("tagged", value=count, entity_id="de_mca")
-```
-
----
-
-## Testing
-
-For unit tests, use `MockQueueAdapter` and provide manual `AirflowContext`:
-
-```python
-from pulse import AggregationMonitoringService, AirflowContext, MockQueueAdapter
-
-def test_metrics():
-    context = AirflowContext(dag_id="test_dag", task_id="test_task", run_id="test_run")
-    adapter = MockQueueAdapter()
-
-    monitor = AggregationMonitoringService(
-        service="leverage",
-        airflow_context=context,
-        queue_adapter=adapter,
-    )
-
-    monitor.recordData(metric_name="tagged", value=100, entity_id="test_entity")
-
-    # Verify
-    assert len(adapter.messages) == 1
-    assert adapter.messages[0].metric_name == "tagged"
-    assert adapter.messages[0].value == 100.0
 ```
 
 ---
@@ -254,23 +198,30 @@ GROUP BY hour, metric_name
 ORDER BY hour DESC
 ```
 
+**Filter by entity_id pattern:**
+
+```sql
+SELECT * FROM monitoring_source_metrics
+WHERE entity_id LIKE 'de_%'
+```
+
 ---
 
 ## Troubleshooting
 
 ### Metrics Not Appearing
 
-1. **Check Airflow logs for recording:**
+1. Check Airflow logs for recording:
    ```
    INFO - Recorded metric: tagged = 150
    ```
 
-2. **Check consumer DAG:**
+2. Check consumer DAG:
    - Go to Airflow → DAG: `metrics.source_consumer`
    - Verify last run was successful
    - Check task logs for your queue name
 
-3. **Query database directly:**
+3. Query database directly:
    ```sql
    SELECT COUNT(*) FROM monitoring_source_metrics
    WHERE created_by = 'your_dag_id' AND created_at > NOW() - INTERVAL '1 day';
@@ -282,18 +233,19 @@ ORDER BY hour DESC
 |-------|-------|-----|
 | `Service 'xyz' not registered` | Service not in registry | Add `ServiceSchema` to `METRICS_REGISTRY` in `pulse/registry.py` |
 | `Metric 'abc' is not registered` | Metric not defined | Add `Metric` to service's `metrics` tuple |
-| `entity_id is required` | Missing entity_id | Provide unique `entity_id` for each metric |
-| `entity_id cannot be empty` | Empty string | Use meaningful identifier |
-| `Value must be numeric` | Wrong type | Pass `int` or `float` value |
+| `entity_id is required` | Didn't provide entity_id | Add `entity_id` parameter |
+| `entity_id cannot be empty` | Empty string passed | Use meaningful identifier |
+| `Value must be numeric` | Wrong type | Use `int` or `float` value |
 
 ---
 
 ## Full Example: Leverage Service
 
-### Registry Configuration
+### Files Created
+
+**Registry** (`pulse/registry.py`):
 
 ```python
-# In pulse/registry.py
 ServiceSchema(
     service="leverage",
     queue_name=PulseQueues.LEVERAGE_METRICS,
@@ -305,9 +257,7 @@ ServiceSchema(
 ),
 ```
 
-### EQM Config
-
-File: `data_db_utils/entity_queue_manager/queue_managers_configs/pulse_leverage_config.yaml`
+**EQM Config** (`data_db_utils/entity_queue_manager/queue_managers_configs/pulse_leverage_config.yaml`):
 
 ```yaml
 QueueManagerConfigurations:
@@ -343,77 +293,29 @@ def process_leverage(**context):
         )
 ```
 
+Example queries for Grafana can be found here: [Example Grafana Queries for Leverage Tagging Requirements](#)
+
 ---
 
 ## FAQ
 
 **Q: How often should I record?**
-A: Once per metric per unique entity_id per DAG run. Pre-aggregate in your code.
+A: Once per metric per DAG run. Pre-aggregate in your code.
 
 **Q: What if my DAG retries?**
-A: Safe. Same idempotency key is generated from `dag_id + task_id + run_id + metric_name + entity_id`. Duplicate inserts are silently ignored.
+A: Safe. Same `row_id` is generated from `dag_id + task_id + run_id + metric_name + entity_id`, duplicate insert is silently ignored.
 
 **Q: When do metrics appear in Grafana?**
 A: Within 1 day. Consumer DAG (`metrics.aggregate_consumer`) runs once per day.
 
 **Q: Can I add a new metric to existing service?**
-A: Yes. Add `Metric` to the service's `metrics` tuple in `registry.py`, submit PR. No consumer changes needed.
+A: Yes. Add `Metric` to the `metrics` tuple in `registry.py`, submit PR. No consumer changes needed.
+
+**Q: Can I add new enum values to Owners or PulseQueues?**
+A: Yes. Add to the enum in `registry.py`, submit PR.
 
 **Q: What's the max metric name length?**
 A: 255 characters. Keep names short.
 
 **Q: What's the max entity_id length?**
 A: 512 characters.
-
----
-
-## Grafana Query Examples
-
-### 1. Daily Total Processed
-
-```sql
-SELECT SUM(metric_value) as total_transactions
-FROM monitoring_aggregated_metrics
-WHERE metric_name = 'tagged'
-  AND aggregation_time = CURRENT_DATE - 1;
-```
-
-### 2. 7-Day Trend
-
-```sql
-SELECT
-    aggregation_time::DATE as date,
-    SUM(metric_value) as total
-FROM monitoring_aggregated_metrics
-WHERE metric_name = 'tagged'
-  AND aggregation_time >= CURRENT_DATE - 7
-GROUP BY aggregation_time
-ORDER BY aggregation_time;
-```
-
-### 3. Week-over-Week Comparison
-
-```sql
-SELECT
-    'This Week' as period,
-    SUM(metric_value) as total
-FROM monitoring_aggregated_metrics
-WHERE metric_name = 'tagged'
-  AND aggregation_time >= DATE_TRUNC('week', CURRENT_DATE)
-UNION ALL
-SELECT
-    'Last Week' as period,
-    SUM(metric_value) as total
-FROM monitoring_aggregated_metrics
-WHERE metric_name = 'tagged'
-  AND aggregation_time >= DATE_TRUNC('week', CURRENT_DATE) - INTERVAL '7 days'
-  AND aggregation_time < DATE_TRUNC('week', CURRENT_DATE);
-```
-
-### 4. Filter by Entity ID Pattern
-
-```sql
-SELECT * FROM monitoring_source_metrics
-WHERE entity_id LIKE 'de_%'
-  AND created_at > NOW() - INTERVAL '24 hours';
-```
