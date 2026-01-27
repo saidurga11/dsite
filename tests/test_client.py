@@ -4,6 +4,7 @@ import pytest
 
 from pulse import AirflowContext, MockQueueAdapter, AggregationMonitoringService
 from pulse.exceptions import ConfigurationError, ValidationError
+from pulse.registry import LeverageMetrics, Metric, MetricType
 
 
 class TestAggregationMonitoringServiceInit:
@@ -152,7 +153,7 @@ class TestAggregationMonitoringServiceRecordData:
     ) -> None:
         """Test recording a counter metric."""
         result = service.recordData(
-            metric_name="tagged",
+            metric=LeverageMetrics.TAGGED,
             value=1,
             entity_id="tx_123",
         )
@@ -172,7 +173,7 @@ class TestAggregationMonitoringServiceRecordData:
     ) -> None:
         """Test recording a timing metric."""
         result = service.recordData(
-            metric_name="match_latency_ms",
+            metric=LeverageMetrics.MATCH_LATENCY_MS,
             value=45.2,
             entity_id="tx_123",
         )
@@ -192,7 +193,7 @@ class TestAggregationMonitoringServiceRecordData:
         """Test that duplicate recordings are rejected."""
         # First record succeeds
         result1 = service.recordData(
-            metric_name="tagged",
+            metric=LeverageMetrics.TAGGED,
             value=1,
             entity_id="tx_123",
         )
@@ -200,7 +201,7 @@ class TestAggregationMonitoringServiceRecordData:
 
         # Second record with same entity_id is rejected
         result2 = service.recordData(
-            metric_name="tagged",
+            metric=LeverageMetrics.TAGGED,
             value=1,
             entity_id="tx_123",
         )
@@ -214,9 +215,10 @@ class TestAggregationMonitoringServiceRecordData:
         service: AggregationMonitoringService,
     ) -> None:
         """Test that recording unregistered metric raises ValidationError."""
+        unregistered_metric = Metric(name="unknown_metric", type=MetricType.COUNTER)
         with pytest.raises(ValidationError) as exc_info:
             service.recordData(
-                metric_name="unknown_metric",
+                metric=unregistered_metric,
                 value=1,
                 entity_id="tx_123",
             )
@@ -230,7 +232,7 @@ class TestAggregationMonitoringServiceRecordData:
         """Test that empty entity_id raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
             service.recordData(
-                metric_name="tagged",
+                metric=LeverageMetrics.TAGGED,
                 value=1,
                 entity_id="",
             )
@@ -244,7 +246,7 @@ class TestAggregationMonitoringServiceRecordData:
         """Test that None entity_id raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
             service.recordData(
-                metric_name="tagged",
+                metric=LeverageMetrics.TAGGED,
                 value=1,
                 entity_id=None,  # type: ignore
             )
@@ -258,7 +260,7 @@ class TestAggregationMonitoringServiceRecordData:
         """Test that invalid value raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
             service.recordData(
-                metric_name="tagged",
+                metric=LeverageMetrics.TAGGED,
                 value="not a number",  # type: ignore
                 entity_id="tx_123",
             )
@@ -273,7 +275,7 @@ class TestAggregationMonitoringServiceRecordData:
     ) -> None:
         """Test that idempotency key has correct format."""
         service.recordData(
-            metric_name="tagged",
+            metric=LeverageMetrics.TAGGED,
             value=1,
             entity_id="tx_abc123",
         )
@@ -312,9 +314,9 @@ class TestAggregationMonitoringServiceRecordDataBatch:
     ) -> None:
         """Test batch recording multiple metrics."""
         metrics = [
-            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
-            {"metric_name": "tagged", "value": 1, "entity_id": "tx_002"},
-            {"metric_name": "match_latency_ms", "value": 50.5, "entity_id": "tx_003"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_002"},
+            {"metric": LeverageMetrics.MATCH_LATENCY_MS, "value": 50.5, "entity_id": "tx_003"},
         ]
 
         result = service.recordDataBatch(metrics)
@@ -329,9 +331,9 @@ class TestAggregationMonitoringServiceRecordDataBatch:
     ) -> None:
         """Test batch recording with duplicate entity_ids."""
         metrics = [
-            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
-            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},  # Duplicate
-            {"metric_name": "tagged", "value": 1, "entity_id": "tx_002"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},  # Duplicate
+            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_002"},
         ]
 
         result = service.recordDataBatch(metrics)
@@ -344,10 +346,11 @@ class TestAggregationMonitoringServiceRecordDataBatch:
         service: AggregationMonitoringService,
     ) -> None:
         """Test that validation errors show the metric index."""
+        unregistered_metric = Metric(name="unknown_metric", type=MetricType.COUNTER)
         metrics = [
-            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
-            {"metric_name": "unknown_metric", "value": 1, "entity_id": "tx_002"},  # Invalid
-            {"metric_name": "tagged", "value": 1, "entity_id": "tx_003"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},
+            {"metric": unregistered_metric, "value": 1, "entity_id": "tx_002"},  # Invalid
+            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_003"},
         ]
 
         with pytest.raises(ValidationError) as exc_info:
@@ -370,7 +373,7 @@ class TestAggregationMonitoringServiceRecordDataBatch:
     ) -> None:
         """Test that missing required field raises ValidationError."""
         metrics = [
-            {"metric_name": "tagged", "entity_id": "tx_001"},  # Missing value
+            {"metric": LeverageMetrics.TAGGED, "entity_id": "tx_001"},  # Missing value
         ]
 
         with pytest.raises(ValidationError) as exc_info:
@@ -422,7 +425,7 @@ class TestAggregationMonitoringServiceIntegration:
 
         # Record first metric
         result1 = service.recordData(
-            metric_name="tagged",
+            metric=LeverageMetrics.TAGGED,
             value=1,
             entity_id="tx_abc123",
         )
@@ -430,7 +433,7 @@ class TestAggregationMonitoringServiceIntegration:
 
         # Record second metric
         result2 = service.recordData(
-            metric_name="match_latency_ms",
+            metric=LeverageMetrics.MATCH_LATENCY_MS,
             value=45.2,
             entity_id="tx_def456",
         )
@@ -438,7 +441,7 @@ class TestAggregationMonitoringServiceIntegration:
 
         # Try duplicate - should be rejected
         result3 = service.recordData(
-            metric_name="tagged",
+            metric=LeverageMetrics.TAGGED,
             value=1,
             entity_id="tx_abc123",
         )
@@ -465,9 +468,9 @@ class TestAggregationMonitoringServiceIntegration:
         )
 
         metrics = [
-            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
-            {"metric_name": "tagged", "value": 1, "entity_id": "tx_002"},
-            {"metric_name": "match_latency_ms", "value": 45.2, "entity_id": "tx_003"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_002"},
+            {"metric": LeverageMetrics.MATCH_LATENCY_MS, "value": 45.2, "entity_id": "tx_003"},
         ]
 
         result = service.recordDataBatch(metrics)

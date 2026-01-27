@@ -4,7 +4,7 @@ import pytest
 
 from pulse import Metric, MetricType
 from pulse.exceptions import ValidationError
-from pulse.registry import MAX_ENTITY_ID_LENGTH, MAX_METRIC_NAME_LENGTH, Owners, PulseQueues, ServiceSchema
+from pulse.registry import MAX_ENTITY_ID_LENGTH, Owners, PulseQueues, ServiceSchema
 from pulse.utils import validate_entity_id, validate_metric, validate_value
 
 
@@ -27,46 +27,34 @@ class TestValidateMetric:
 
     def test_validate_registered_metric(self, sample_service: ServiceSchema) -> None:
         """Test validating a registered metric."""
-        metric = validate_metric("tagged", sample_service)
-        assert metric.name == "tagged"
-        assert metric.type == MetricType.COUNTER
+        tagged_metric = Metric(name="tagged", type=MetricType.COUNTER)
+        # Should not raise
+        validate_metric(tagged_metric, sample_service)
 
     def test_validate_unregistered_metric_raises(self, sample_service: ServiceSchema) -> None:
         """Test that unregistered metric raises ValidationError."""
+        unknown_metric = Metric(name="unknown", type=MetricType.COUNTER)
         with pytest.raises(ValidationError) as exc_info:
-            validate_metric("unknown", sample_service)
+            validate_metric(unknown_metric, sample_service)
         assert "not registered" in str(exc_info.value)
 
-    def test_validate_empty_metric_name_raises(self, sample_service: ServiceSchema) -> None:
-        """Test that empty metric name raises ValidationError."""
+    def test_validate_none_metric_raises(self, sample_service: ServiceSchema) -> None:
+        """Test that None metric raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validate_metric("", sample_service)
-        assert "cannot be empty" in str(exc_info.value)
+            validate_metric(None, sample_service)  # type: ignore
+        assert "is required" in str(exc_info.value)
 
-    def test_validate_metric_name_too_long_raises(self, sample_service: ServiceSchema) -> None:
-        """Test that too long metric name raises ValidationError."""
-        long_name = "a" * (MAX_METRIC_NAME_LENGTH + 1)
+    def test_validate_metric_non_metric_object_raises(self, sample_service: ServiceSchema) -> None:
+        """Test that non-Metric object raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            validate_metric(long_name, sample_service)
-        assert "maximum length" in str(exc_info.value)
+            validate_metric("tagged", sample_service)  # type: ignore
+        assert "must be a Metric object" in str(exc_info.value)
 
-    def test_validate_metric_name_invalid_chars_raises(self, sample_service: ServiceSchema) -> None:
-        """Test that invalid characters raise ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            validate_metric("test@metric", sample_service)
-        assert "invalid characters" in str(exc_info.value)
-
-    def test_validate_metric_name_starting_with_number_raises(self, sample_service: ServiceSchema) -> None:
-        """Test that metric starting with number raises ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            validate_metric("1test", sample_service)
-        assert "invalid characters" in str(exc_info.value)
-
-    def test_validate_metric_name_non_string_raises(self, sample_service: ServiceSchema) -> None:
-        """Test that non-string metric name raises ValidationError."""
+    def test_validate_metric_int_raises(self, sample_service: ServiceSchema) -> None:
+        """Test that integer raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
             validate_metric(123, sample_service)  # type: ignore
-        assert "must be a string" in str(exc_info.value)
+        assert "must be a Metric object" in str(exc_info.value)
 
 
 class TestValidateValue:

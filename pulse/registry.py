@@ -56,20 +56,32 @@ class ServiceSchema:
     owner: Owners
     metrics: tuple[Metric, ...] = field(default_factory=tuple)
 
-    def get_metric(self, name: str) -> Optional[Metric]:
-        """Get a metric by name."""
-        for metric in self.metrics:
-            if metric.name == name:
-                return metric
+    def get_metric(self, metric: "Metric") -> Optional["Metric"]:
+        """Get a metric if it's registered for this service."""
+        for m in self.metrics:
+            if m.name == metric.name:
+                return m
         return None
 
-    def has_metric(self, name: str) -> bool:
+    def has_metric(self, metric: "Metric") -> bool:
         """Check if a metric is registered."""
-        return self.get_metric(name) is not None
+        return self.get_metric(metric) is not None
 
 
 # =============================================================================
-# METRICS REGISTRY - Add your service registrations here
+# METRIC DEFINITIONS - Define metrics as class constants
+# =============================================================================
+
+
+class LeverageMetrics:
+    """Metrics for the leverage service."""
+
+    TAGGED = Metric(name="tagged", type=MetricType.COUNTER)
+    MATCH_LATENCY_MS = Metric(name="match_latency_ms", type=MetricType.TIMING)
+
+
+# =============================================================================
+# METRICS REGISTRY - Register services with their metrics
 # =============================================================================
 
 METRICS_REGISTRY: list[ServiceSchema] = [
@@ -78,8 +90,8 @@ METRICS_REGISTRY: list[ServiceSchema] = [
         queue_name=PulseQueues.LEVERAGE_METRICS,
         owner=Owners.DATA_SCIENCE,
         metrics=(
-            Metric(name="tagged", type=MetricType.COUNTER),
-            Metric(name="match_latency_ms", type=MetricType.TIMING),
+            LeverageMetrics.TAGGED,
+            LeverageMetrics.MATCH_LATENCY_MS,
         ),
     ),
     # Add more services here...

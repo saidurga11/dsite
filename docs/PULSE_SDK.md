@@ -29,14 +29,20 @@ class Owners(str, Enum):
     MLE = "mle"
     DATA_ENGINEERING = "data_engineering"
 
+# Define metrics as class constants for type-safety and IDE autocomplete
+class LeverageMetrics:
+    """Metrics for the leverage service."""
+    TAGGED = Metric(name="tagged", type=MetricType.COUNTER)
+    MATCH_LATENCY_MS = Metric(name="match_latency_ms", type=MetricType.TIMING)
+
 METRICS_REGISTRY: list[ServiceSchema] = [
     ServiceSchema(
         service="leverage",
         queue_name=PulseQueues.LEVERAGE_METRICS,
         owner=Owners.DATA_SCIENCE,
         metrics=(
-            Metric(name="tagged", type=MetricType.COUNTER),
-            Metric(name="match_latency_ms", type=MetricType.TIMING),
+            LeverageMetrics.TAGGED,
+            LeverageMetrics.MATCH_LATENCY_MS,
         ),
     ),
 ]
@@ -49,10 +55,10 @@ METRICS_REGISTRY: list[ServiceSchema] = [
 | `service` | Yes | Must match `AggregationMonitoringService(service="...")` in your code |
 | `owner` | Yes | Team that owns this service (e.g., `Owners.DATA_SCIENCE`, `Owners.DATA_ENGINEERING`) |
 | `queue_name` | Yes | Queue from `PulseQueues` enum. Pattern: `PULSE_{SERVICE}_METRICS_QUEUE` |
-| `metrics` | Yes | Tuple of metrics this service can record |
-| `metrics.name` | Yes | Metric name (e.g., `"tagged"`) |
-| `metrics.type` | No | `MetricType.COUNTER` (default), `GAUGE`, or `TIMING` |
-| `metrics.description` | No | Human-readable description |
+| `metrics` | Yes | Tuple of Metric constants from your metrics class |
+| `Metric.name` | Yes | Metric name (e.g., `"tagged"`) |
+| `Metric.type` | No | `MetricType.COUNTER` (default), `GAUGE`, or `TIMING` |
+| `Metric.description` | No | Human-readable description |
 
 ### Step 2: Create EQM Configuration
 
@@ -90,6 +96,7 @@ Create PR with both changes. After merge, the consumer DAG automatically discove
 
 ```python
 from pulse import AggregationMonitoringService
+from pulse.registry import LeverageMetrics
 
 def process_transactions(**context):
     # 1. Initialize service (Airflow context auto-detected)
@@ -101,7 +108,7 @@ def process_transactions(**context):
 
     # 3. Record ONCE per metric per DAG run
     monitor.recordData(
-        metric_name="tagged",
+        metric=LeverageMetrics.TAGGED,
         value=de_mca_count,
         entity_id="de_mca",
     )
@@ -111,17 +118,20 @@ def process_transactions(**context):
 
 ```python
 monitor.recordData(
-    metric_name: str,      # Metric name from registry (e.g., "tagged")
+    metric: Metric,        # Metric object from registry (e.g., LeverageMetrics.TAGGED)
     value: int | float,    # Pre-aggregated value
     entity_id: str,        # Unique identifier for deduplication
 )
 ```
 
-### Recording Multiple Metrics
+### Recording Multiple Metrics (Batch)
+
+Use `recordDataBatch` to record multiple metrics at once:
 
 ```python
 from collections import Counter
 from pulse import AggregationMonitoringService
+from pulse.registry import LeverageMetrics
 
 def process_transactions(**context):
     monitor = AggregationMonitoringService(service="leverage")
@@ -133,25 +143,24 @@ def process_transactions(**context):
     for txn in transactions:
         counts[(txn.caller, txn.category)] += 1
 
-    # Record each combination once
-    for (caller, category), count in counts.items():
-        monitor.recordData(
-            metric_name="tagged",
-            value=count,
-            entity_id=f"{caller}_{category}",
-        )
+    # Record all combinations in a single batch
+    metrics = [
+        {"metric": LeverageMetrics.TAGGED, "value": count, "entity_id": f"{caller}_{category}"}
+        for (caller, category), count in counts.items()
+    ]
+    monitor.recordDataBatch(metrics)
 ```
 
 ### What NOT to Do
 
 ```python
-# ❌ WRONG: Recording inside a loop
+# ❌ WRONG: Recording inside a loop (one message per transaction)
 for txn in transactions:
-    monitor.recordData("tagged", value=1, entity_id=txn.id)
+    monitor.recordData(metric=LeverageMetrics.TAGGED, value=1, entity_id=txn.id)
 
 # ✅ CORRECT: Pre-aggregate, then record once
 count = sum(1 for t in transactions if t.caller == "de" and t.category == "mca")
-monitor.recordData("tagged", value=count, entity_id="de_mca")
+monitor.recordData(metric=LeverageMetrics.TAGGED, value=count, entity_id="de_mca")
 ```
 
 ---
@@ -232,7 +241,8 @@ WHERE entity_id LIKE 'de_%'
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `Service 'xyz' not registered` | Service not in registry | Add `ServiceSchema` to `METRICS_REGISTRY` in `pulse/registry.py` |
-| `Metric 'abc' is not registered` | Metric not defined | Add `Metric` to service's `metrics` tuple |
+| `Metric 'abc' is not registered for service` | Metric not defined for this service | Add `Metric` to your service's `metrics` tuple |
+| `metric must be a Metric object` | Passed string instead of Metric | Use `LeverageMetrics.TAGGED` instead of `"tagged"` |
 | `entity_id is required` | Didn't provide entity_id | Add `entity_id` parameter |
 | `entity_id cannot be empty` | Empty string passed | Use meaningful identifier |
 | `Value must be numeric` | Wrong type | Use `int` or `float` value |
@@ -246,13 +256,18 @@ WHERE entity_id LIKE 'de_%'
 **Registry** (`pulse/registry.py`):
 
 ```python
+class LeverageMetrics:
+    """Metrics for the leverage service."""
+    TAGGED = Metric(name="tagged", type=MetricType.COUNTER)
+    MATCH_LATENCY_MS = Metric(name="match_latency_ms", type=MetricType.TIMING)
+
 ServiceSchema(
     service="leverage",
     queue_name=PulseQueues.LEVERAGE_METRICS,
     owner=Owners.DATA_SCIENCE,
     metrics=(
-        Metric(name="tagged", type=MetricType.COUNTER),
-        Metric(name="match_latency_ms", type=MetricType.TIMING),
+        LeverageMetrics.TAGGED,
+        LeverageMetrics.MATCH_LATENCY_MS,
     ),
 ),
 ```
@@ -273,6 +288,7 @@ QueueManagerConfigurations:
 ```python
 from collections import Counter
 from pulse import AggregationMonitoringService
+from pulse.registry import LeverageMetrics
 
 def process_leverage(**context):
     monitor = AggregationMonitoringService(service="leverage")
@@ -284,13 +300,12 @@ def process_leverage(**context):
     for txn in transactions:
         counts[(txn.caller, txn.category)] += 1
 
-    # Record
-    for (caller, category), count in counts.items():
-        monitor.recordData(
-            metric_name="tagged",
-            value=count,
-            entity_id=f"{caller}_{category}",
-        )
+    # Record all in a single batch
+    metrics = [
+        {"metric": LeverageMetrics.TAGGED, "value": count, "entity_id": f"{caller}_{category}"}
+        for (caller, category), count in counts.items()
+    ]
+    monitor.recordDataBatch(metrics)
 ```
 
 Example queries for Grafana can be found here: [Example Grafana Queries for Leverage Tagging Requirements](#)

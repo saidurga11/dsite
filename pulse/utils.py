@@ -5,36 +5,26 @@ from typing import Any
 
 from pulse.exceptions import ValidationError
 from pulse.models import AirflowContext
-from pulse.registry import MAX_ENTITY_ID_LENGTH, MAX_METRIC_NAME_LENGTH, METRIC_NAME_PATTERN, Metric, ServiceSchema
+from pulse.registry import MAX_ENTITY_ID_LENGTH, Metric, ServiceSchema
 
 
-def validate_metric(metric_name: str, service: ServiceSchema) -> Metric:
+def validate_metric(metric: Metric, service: ServiceSchema) -> None:
     """
-    Validate a metric name and return its definition.
+    Validate that a metric is registered for the service.
 
     Raises:
-        ValidationError: If the metric name is invalid or unregistered
+        ValidationError: If the metric is invalid or not registered
     """
-    if not metric_name:
-        raise ValidationError("Metric name cannot be empty")
-
-    if not isinstance(metric_name, str):
-        raise ValidationError(f"Metric name must be a string, got {type(metric_name).__name__}")
-
-    if len(metric_name) > MAX_METRIC_NAME_LENGTH:
-        raise ValidationError(f"Metric name exceeds maximum length of {MAX_METRIC_NAME_LENGTH}")
-
-    if not METRIC_NAME_PATTERN.match(metric_name):
-        raise ValidationError(
-            f"Metric name '{metric_name}' contains invalid characters. "
-            "Must start with a letter and contain only letters, numbers, underscores, dots, or hyphens."
-        )
-
-    metric = service.get_metric(metric_name)
     if metric is None:
-        raise ValidationError(f"Metric '{metric_name}' is not registered")
+        raise ValidationError("metric is required")
 
-    return metric
+    if not isinstance(metric, Metric):
+        raise ValidationError(f"metric must be a Metric object, got {type(metric).__name__}")
+
+    if not service.has_metric(metric):
+        raise ValidationError(
+            f"Metric '{metric.name}' is not registered for service '{service.service}'"
+        )
 
 
 def validate_value(value: Any) -> float:

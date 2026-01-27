@@ -31,35 +31,37 @@ class TestServiceSchema:
         assert len(schema.metrics) == 1
 
     def test_get_metric(self) -> None:
-        """Test getting a metric by name."""
+        """Test getting a metric by Metric object."""
+        metric_a = Metric(name="metric_a", type=MetricType.COUNTER)
+        metric_b = Metric(name="metric_b", type=MetricType.GAUGE)
         schema = ServiceSchema(
             service="test",
             queue_name=PulseQueues.LEVERAGE_METRICS,
             owner=Owners.DATA_SCIENCE,
-            metrics=(
-                Metric(name="metric_a", type=MetricType.COUNTER),
-                Metric(name="metric_b", type=MetricType.GAUGE),
-            ),
+            metrics=(metric_a, metric_b),
         )
 
-        metric = schema.get_metric("metric_a")
-        assert metric is not None
-        assert metric.name == "metric_a"
+        found = schema.get_metric(metric_a)
+        assert found is not None
+        assert found.name == "metric_a"
 
-        missing = schema.get_metric("nonexistent")
+        nonexistent = Metric(name="nonexistent", type=MetricType.COUNTER)
+        missing = schema.get_metric(nonexistent)
         assert missing is None
 
     def test_has_metric(self) -> None:
         """Test checking if a metric exists."""
+        metric_a = Metric(name="metric_a", type=MetricType.COUNTER)
         schema = ServiceSchema(
             service="test",
             queue_name=PulseQueues.LEVERAGE_METRICS,
             owner=Owners.DATA_SCIENCE,
-            metrics=(Metric(name="metric_a", type=MetricType.COUNTER),),
+            metrics=(metric_a,),
         )
 
-        assert schema.has_metric("metric_a") is True
-        assert schema.has_metric("nonexistent") is False
+        assert schema.has_metric(metric_a) is True
+        nonexistent = Metric(name="nonexistent", type=MetricType.COUNTER)
+        assert schema.has_metric(nonexistent) is False
 
 
 class TestMetric:
