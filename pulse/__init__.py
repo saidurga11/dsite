@@ -1,12 +1,12 @@
 """
 Pulse SDK - Operational metrics for Airflow DAGs.
 
-A Python SDK for emitting operational metrics to a Redis queue,
+A Python SDK for recording operational metrics to a Redis queue,
 designed for use in Airflow DAGs to track transaction counts,
 processing times, and error rates.
 
 Usage:
-    from pulse import PulseClient, AirflowContext
+    from pulse import AggregationMonitoringService, AirflowContext
 
     context = AirflowContext(
         dag_id="leverage_tagging_dag",
@@ -14,16 +14,16 @@ Usage:
         run_id="scheduled__2026-01-08T14:00:00",
     )
 
-    pulse = PulseClient(service="leverage", airflow_context=context)
+    monitor = AggregationMonitoringService(service="leverage", airflow_context=context)
 
-    pulse.emit(
+    monitor.recordData(
         metric_name="tagged",
         value=1,
         entity_id="tx_abc123",
     )
 """
 
-from pulse.client import PulseClient
+from pulse.client import AggregationMonitoringService
 from pulse.constants import MetricType
 from pulse.exceptions import ConfigurationError, EmitError, PulseError, ValidationError
 from pulse.models import AirflowContext
@@ -39,8 +39,8 @@ from pulse.registry import (
 )
 
 __all__ = [
-    # Main client
-    "PulseClient",
+    # Main service
+    "AggregationMonitoringService",
     # Models
     "AirflowContext",
     # Registry

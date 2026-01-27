@@ -2,12 +2,12 @@
 
 import pytest
 
-from pulse import AirflowContext, MockQueueAdapter, PulseClient
+from pulse import AirflowContext, MockQueueAdapter, AggregationMonitoringService
 from pulse.exceptions import ConfigurationError, ValidationError
 
 
-class TestPulseClientInit:
-    """Tests for PulseClient initialization."""
+class TestAggregationMonitoringServiceInit:
+    """Tests for AggregationMonitoringService initialization."""
 
     def test_init_with_valid_service_and_context(
         self,
@@ -15,13 +15,13 @@ class TestPulseClientInit:
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
         """Test initializing with valid service and context."""
-        client = PulseClient(
+        service = AggregationMonitoringService(
             service="leverage",
             airflow_context=sample_airflow_context,
             queue_adapter=mock_queue_adapter,
         )
 
-        assert client is not None
+        assert service is not None
 
     def test_init_with_empty_service_name(
         self,
@@ -30,7 +30,7 @@ class TestPulseClientInit:
     ) -> None:
         """Test that empty service name raises ConfigurationError."""
         with pytest.raises(ConfigurationError) as exc_info:
-            PulseClient(
+            AggregationMonitoringService(
                 service="",
                 airflow_context=sample_airflow_context,
                 queue_adapter=mock_queue_adapter,
@@ -45,7 +45,7 @@ class TestPulseClientInit:
     ) -> None:
         """Test that non-existent service raises ConfigurationError."""
         with pytest.raises(ConfigurationError) as exc_info:
-            PulseClient(
+            AggregationMonitoringService(
                 service="nonexistent",
                 airflow_context=sample_airflow_context,
                 queue_adapter=mock_queue_adapter,
@@ -59,7 +59,7 @@ class TestPulseClientInit:
     ) -> None:
         """Test that None airflow_context raises ConfigurationError."""
         with pytest.raises(ConfigurationError) as exc_info:
-            PulseClient(
+            AggregationMonitoringService(
                 service="leverage",
                 airflow_context=None,  # type: ignore
                 queue_adapter=mock_queue_adapter,
@@ -73,7 +73,7 @@ class TestPulseClientInit:
     ) -> None:
         """Test that invalid airflow_context type raises ConfigurationError."""
         with pytest.raises(ConfigurationError) as exc_info:
-            PulseClient(
+            AggregationMonitoringService(
                 service="leverage",
                 airflow_context={"dag_id": "dag", "task_id": "task", "run_id": "run"},  # type: ignore
                 queue_adapter=mock_queue_adapter,
@@ -89,7 +89,7 @@ class TestPulseClientInit:
         context = AirflowContext(dag_id="", task_id="task", run_id="run")
 
         with pytest.raises(ConfigurationError) as exc_info:
-            PulseClient(
+            AggregationMonitoringService(
                 service="leverage",
                 airflow_context=context,
                 queue_adapter=mock_queue_adapter,
@@ -105,7 +105,7 @@ class TestPulseClientInit:
         context = AirflowContext(dag_id="dag", task_id="", run_id="run")
 
         with pytest.raises(ConfigurationError) as exc_info:
-            PulseClient(
+            AggregationMonitoringService(
                 service="leverage",
                 airflow_context=context,
                 queue_adapter=mock_queue_adapter,
@@ -121,7 +121,7 @@ class TestPulseClientInit:
         context = AirflowContext(dag_id="dag", task_id="task", run_id="")
 
         with pytest.raises(ConfigurationError) as exc_info:
-            PulseClient(
+            AggregationMonitoringService(
                 service="leverage",
                 airflow_context=context,
                 queue_adapter=mock_queue_adapter,
@@ -130,29 +130,29 @@ class TestPulseClientInit:
         assert "run_id cannot be empty" in str(exc_info.value)
 
 
-class TestPulseClientEmit:
-    """Tests for PulseClient.emit method."""
+class TestAggregationMonitoringServiceRecordData:
+    """Tests for AggregationMonitoringService.recordData method."""
 
     @pytest.fixture
-    def client(
+    def service(
         self,
         sample_airflow_context: AirflowContext,
         mock_queue_adapter: MockQueueAdapter,
-    ) -> PulseClient:
-        """Create a PulseClient for testing."""
-        return PulseClient(
+    ) -> AggregationMonitoringService:
+        """Create an AggregationMonitoringService for testing."""
+        return AggregationMonitoringService(
             service="leverage",
             airflow_context=sample_airflow_context,
             queue_adapter=mock_queue_adapter,
         )
 
-    def test_emit_counter_with_dedup(
+    def test_record_counter_with_dedup(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test emitting a counter metric with deduplication."""
-        result = client.emit(
+        """Test recording a counter metric with deduplication."""
+        result = service.recordData(
             metric_name="tagged",
             value=1,
             entity_id="tx_123",
@@ -166,19 +166,19 @@ class TestPulseClientEmit:
         assert message.value == 1.0
         assert message.entity_id == "tx_123"
 
-    def test_emit_timing_without_dedup(
+    def test_record_timing_without_dedup(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test emitting a timing metric without deduplication."""
-        # Emit twice with same entity_id - both should succeed (no dedup)
-        result1 = client.emit(
+        """Test recording a timing metric without deduplication."""
+        # Record twice with same entity_id - both should succeed (no dedup)
+        result1 = service.recordData(
             metric_name="match_latency_ms",
             value=45.2,
             entity_id="tx_123",
         )
-        result2 = client.emit(
+        result2 = service.recordData(
             metric_name="match_latency_ms",
             value=50.5,
             entity_id="tx_123",
@@ -188,22 +188,22 @@ class TestPulseClientEmit:
         assert result2 is True
         assert len(mock_queue_adapter.messages) == 2
 
-    def test_emit_duplicate_rejected(
+    def test_record_duplicate_rejected(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test that duplicate emissions are rejected."""
-        # First emit succeeds
-        result1 = client.emit(
+        """Test that duplicate recordings are rejected."""
+        # First record succeeds
+        result1 = service.recordData(
             metric_name="tagged",
             value=1,
             entity_id="tx_123",
         )
         assert result1 is True
 
-        # Second emit with same entity_id is rejected
-        result2 = client.emit(
+        # Second record with same entity_id is rejected
+        result2 = service.recordData(
             metric_name="tagged",
             value=1,
             entity_id="tx_123",
@@ -213,13 +213,13 @@ class TestPulseClientEmit:
         # Only one message stored
         assert len(mock_queue_adapter.messages) == 1
 
-    def test_emit_unregistered_metric_raises(
+    def test_record_unregistered_metric_raises(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
     ) -> None:
-        """Test that emitting unregistered metric raises ValidationError."""
+        """Test that recording unregistered metric raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            client.emit(
+            service.recordData(
                 metric_name="unknown_metric",
                 value=1,
                 entity_id="tx_123",
@@ -227,13 +227,13 @@ class TestPulseClientEmit:
 
         assert "not registered" in str(exc_info.value)
 
-    def test_emit_missing_entity_id_when_dedup_enabled(
+    def test_record_missing_entity_id_when_dedup_enabled(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
     ) -> None:
         """Test that missing entity_id raises ValidationError when dedup enabled."""
         with pytest.raises(ValidationError) as exc_info:
-            client.emit(
+            service.recordData(
                 metric_name="tagged",
                 value=1,
                 entity_id="",  # Empty
@@ -241,13 +241,13 @@ class TestPulseClientEmit:
 
         assert "cannot be empty" in str(exc_info.value)
 
-    def test_emit_none_entity_id_when_dedup_enabled(
+    def test_record_none_entity_id_when_dedup_enabled(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
     ) -> None:
         """Test that None entity_id raises ValidationError when dedup enabled."""
         with pytest.raises(ValidationError) as exc_info:
-            client.emit(
+            service.recordData(
                 metric_name="tagged",
                 value=1,
                 entity_id=None,  # type: ignore
@@ -255,13 +255,13 @@ class TestPulseClientEmit:
 
         assert "is required" in str(exc_info.value)
 
-    def test_emit_invalid_value_raises(
+    def test_record_invalid_value_raises(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
     ) -> None:
         """Test that invalid value raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            client.emit(
+            service.recordData(
                 metric_name="tagged",
                 value="not a number",  # type: ignore
                 entity_id="tx_123",
@@ -271,12 +271,12 @@ class TestPulseClientEmit:
 
     def test_idempotency_key_format(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
         sample_airflow_context: AirflowContext,
     ) -> None:
         """Test that idempotency key has correct format."""
-        client.emit(
+        service.recordData(
             metric_name="tagged",
             value=1,
             entity_id="tx_abc123",
@@ -293,59 +293,59 @@ class TestPulseClientEmit:
         assert message.idempotency_key == expected_key
 
 
-class TestPulseClientEmitBatch:
-    """Tests for PulseClient.emit_batch method."""
+class TestAggregationMonitoringServiceRecordDataBatch:
+    """Tests for AggregationMonitoringService.recordDataBatch method."""
 
     @pytest.fixture
-    def client(
+    def service(
         self,
         sample_airflow_context: AirflowContext,
         mock_queue_adapter: MockQueueAdapter,
-    ) -> PulseClient:
-        """Create a PulseClient for testing."""
-        return PulseClient(
+    ) -> AggregationMonitoringService:
+        """Create an AggregationMonitoringService for testing."""
+        return AggregationMonitoringService(
             service="leverage",
             airflow_context=sample_airflow_context,
             queue_adapter=mock_queue_adapter,
         )
 
-    def test_emit_batch_multiple_metrics(
+    def test_record_batch_multiple_metrics(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test batch emitting multiple metrics."""
+        """Test batch recording multiple metrics."""
         metrics = [
             {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
             {"metric_name": "tagged", "value": 1, "entity_id": "tx_002"},
             {"metric_name": "match_latency_ms", "value": 50.5, "entity_id": "tx_003"},
         ]
 
-        result = client.emit_batch(metrics)
+        result = service.recordDataBatch(metrics)
 
         assert result == 3
         assert len(mock_queue_adapter.messages) == 3
 
-    def test_emit_batch_with_duplicates(
+    def test_record_batch_with_duplicates(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test batch emitting with duplicate entity_ids."""
+        """Test batch recording with duplicate entity_ids."""
         metrics = [
             {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
             {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},  # Duplicate
             {"metric_name": "tagged", "value": 1, "entity_id": "tx_002"},
         ]
 
-        result = client.emit_batch(metrics)
+        result = service.recordDataBatch(metrics)
 
         assert result == 2  # Only 2 unique
         assert len(mock_queue_adapter.messages) == 2
 
-    def test_emit_batch_validation_error_shows_index(
+    def test_record_batch_validation_error_shows_index(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
     ) -> None:
         """Test that validation errors show the metric index."""
         metrics = [
@@ -355,22 +355,22 @@ class TestPulseClientEmitBatch:
         ]
 
         with pytest.raises(ValidationError) as exc_info:
-            client.emit_batch(metrics)
+            service.recordDataBatch(metrics)
 
         assert "index 1" in str(exc_info.value)
 
-    def test_emit_batch_empty_list(
+    def test_record_batch_empty_list(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
     ) -> None:
-        """Test batch emitting empty list."""
-        result = client.emit_batch([])
+        """Test batch recording empty list."""
+        result = service.recordDataBatch([])
 
         assert result == 0
 
-    def test_emit_batch_missing_required_field_raises(
+    def test_record_batch_missing_required_field_raises(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
     ) -> None:
         """Test that missing required field raises ValidationError."""
         metrics = [
@@ -378,34 +378,34 @@ class TestPulseClientEmitBatch:
         ]
 
         with pytest.raises(ValidationError) as exc_info:
-            client.emit_batch(metrics)
+            service.recordDataBatch(metrics)
 
         assert "value is required" in str(exc_info.value)
 
-    def test_emit_batch_not_list_raises(
+    def test_record_batch_not_list_raises(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
     ) -> None:
         """Test that non-list input raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            client.emit_batch("not a list")  # type: ignore
+            service.recordDataBatch("not a list")  # type: ignore
 
         assert "must be a list" in str(exc_info.value)
 
-    def test_emit_batch_item_not_dict_raises(
+    def test_record_batch_item_not_dict_raises(
         self,
-        client: PulseClient,
+        service: AggregationMonitoringService,
     ) -> None:
         """Test that non-dict item raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            client.emit_batch(["not a dict"])  # type: ignore
+            service.recordDataBatch(["not a dict"])  # type: ignore
 
         assert "index 0" in str(exc_info.value)
         assert "must be a dict" in str(exc_info.value)
 
 
-class TestPulseClientIntegration:
-    """Integration tests for PulseClient."""
+class TestAggregationMonitoringServiceIntegration:
+    """Integration tests for AggregationMonitoringService."""
 
     def test_full_workflow(
         self,
@@ -418,22 +418,22 @@ class TestPulseClientIntegration:
             run_id="scheduled__2026-01-08T14:00:00",
         )
 
-        client = PulseClient(
+        service = AggregationMonitoringService(
             service="leverage",
             airflow_context=context,
             queue_adapter=mock_queue_adapter,
         )
 
-        # Emit counter (with dedup)
-        result1 = client.emit(
+        # Record counter (with dedup)
+        result1 = service.recordData(
             metric_name="tagged",
             value=1,
             entity_id="tx_abc123",
         )
         assert result1 is True
 
-        # Emit timing (no dedup)
-        result2 = client.emit(
+        # Record timing (no dedup)
+        result2 = service.recordData(
             metric_name="match_latency_ms",
             value=45.2,
             entity_id="tx_abc123",
@@ -441,7 +441,7 @@ class TestPulseClientIntegration:
         assert result2 is True
 
         # Try duplicate counter - should be rejected
-        result3 = client.emit(
+        result3 = service.recordData(
             metric_name="tagged",
             value=1,
             entity_id="tx_abc123",
@@ -465,14 +465,14 @@ class TestPulseClientIntegration:
         self,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test batch emission workflow."""
+        """Test batch recording workflow."""
         context = AirflowContext(
             dag_id="leverage_tagging_dag",
             task_id="tag_transactions",
             run_id="scheduled__2026-01-08T14:00:00",
         )
 
-        client = PulseClient(
+        service = AggregationMonitoringService(
             service="leverage",
             airflow_context=context,
             queue_adapter=mock_queue_adapter,
@@ -484,7 +484,7 @@ class TestPulseClientIntegration:
             {"metric_name": "match_latency_ms", "value": 45.2, "entity_id": "tx_001"},
         ]
 
-        result = client.emit_batch(metrics)
+        result = service.recordDataBatch(metrics)
 
         assert result == 3
         assert len(mock_queue_adapter.messages) == 3

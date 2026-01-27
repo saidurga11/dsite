@@ -1,4 +1,4 @@
-"""PulseClient for emitting metrics to a Redis queue."""
+"""AggregationMonitoringService for recording metrics to a Redis queue."""
 
 import logging
 from datetime import datetime, timezone
@@ -18,12 +18,12 @@ from pulse.validators import (
 logger = logging.getLogger(__name__)
 
 
-class PulseClient:
+class AggregationMonitoringService:
     """
-    Client for emitting operational metrics to a Redis queue.
+    Service for recording operational metrics to a Redis queue.
 
     Usage:
-        from pulse import PulseClient, AirflowContext
+        from pulse import AggregationMonitoringService, AirflowContext
 
         context = AirflowContext(
             dag_id="my_dag",
@@ -31,9 +31,9 @@ class PulseClient:
             run_id="scheduled__2026-01-08T14:00:00",
         )
 
-        pulse = PulseClient(service="leverage", airflow_context=context)
+        monitor = AggregationMonitoringService(service="leverage", airflow_context=context)
 
-        pulse.emit(
+        monitor.recordData(
             metric_name="tagged",
             value=1,
             entity_id="tx_abc123",
@@ -47,7 +47,7 @@ class PulseClient:
         queue_adapter: Optional[QueueAdapter] = None,
     ) -> None:
         """
-        Initialize client for a registered service.
+        Initialize service for a registered service.
 
         Args:
             service: Registered service name (e.g., "leverage")
@@ -103,14 +103,14 @@ class PulseClient:
         if not context.run_id or not context.run_id.strip():
             raise ConfigurationError("airflow_context.run_id cannot be empty")
 
-    def emit(
+    def recordData(
         self,
         metric_name: str,
         value: Union[int, float],
         entity_id: str,
     ) -> bool:
         """
-        Emit a single metric.
+        Record a single metric.
 
         Args:
             metric_name: Registered metric name
@@ -151,12 +151,12 @@ class PulseClient:
         try:
             return self._queue_adapter.enqueue(message)
         except Exception as e:
-            logger.error(f"Failed to emit metric '{metric_name}': {e}")
+            logger.error(f"Failed to record metric '{metric_name}': {e}")
             return False
 
-    def emit_batch(self, metrics: list[dict[str, Any]]) -> int:
+    def recordDataBatch(self, metrics: list[dict[str, Any]]) -> int:
         """
-        Emit multiple metrics.
+        Record multiple metrics.
 
         Each dict must have: metric_name, value, entity_id
 
@@ -226,5 +226,5 @@ class PulseClient:
         try:
             return self._queue_adapter.enqueue_batch(messages)
         except Exception as e:
-            logger.error(f"Failed to emit batch: {e}")
+            logger.error(f"Failed to record batch: {e}")
             return 0
