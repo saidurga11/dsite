@@ -67,17 +67,15 @@ class MetricMessage:
         timestamp: ISO 8601 timestamp
         metric_name: Name of the metric
         value: Numeric value
-        tags: Key-value pairs for filtering/grouping
+        entity_id: Unique entity identifier
         idempotency_key: Key for deduplication
-        tags_hash: 16-char hash of tags for DB grouping
     """
 
     timestamp: str
     metric_name: str
     value: float
-    tags: dict[str, str]
+    entity_id: str
     idempotency_key: str
-    tags_hash: str
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the message to a dictionary for serialization."""
@@ -85,7 +83,6 @@ class MetricMessage:
             "timestamp": self.timestamp,
             "metric_name": self.metric_name,
             "value": self.value,
-            "tags": dict(self.tags),
+            "entity_id": self.entity_id,
             "idempotency_key": self.idempotency_key,
-            "tags_hash": self.tags_hash,
         }

@@ -1,15 +1,10 @@
 """Tests for Pulse SDK validators."""
 
-import math
-
 import pytest
 
 from pulse.constants import (
     MAX_ENTITY_ID_LENGTH,
     MAX_METRIC_NAME_LENGTH,
-    MAX_TAG_KEY_LENGTH,
-    MAX_TAG_VALUE_LENGTH,
-    MAX_TAGS_PER_METRIC,
     MetricType,
 )
 from pulse.exceptions import ValidationError
@@ -17,7 +12,6 @@ from pulse.models import MetricDefinition
 from pulse.validators import (
     EntityIdValidator,
     MetricValidator,
-    TagValidator,
     ValueValidator,
 )
 
@@ -181,132 +175,6 @@ class TestValueValidator:
             ValueValidator.validate([1, 2, 3])
 
         assert "must be numeric" in str(exc_info.value)
-
-
-class TestTagValidator:
-    """Tests for TagValidator."""
-
-    def test_validate_none_returns_empty_dict(self) -> None:
-        """Test that None tags returns empty dict."""
-        result = TagValidator.validate(None)
-
-        assert result == {}
-
-    def test_validate_empty_dict(self) -> None:
-        """Test validating empty dict."""
-        result = TagValidator.validate({})
-
-        assert result == {}
-
-    def test_validate_valid_tags(self) -> None:
-        """Test validating valid tags."""
-        tags = {"category": "mca", "caller": "de"}
-
-        result = TagValidator.validate(tags)
-
-        assert result == {"category": "mca", "caller": "de"}
-
-    def test_validate_converts_int_value_to_string(self) -> None:
-        """Test that integer values are converted to strings."""
-        tags = {"count": 42}
-
-        result = TagValidator.validate(tags)
-
-        assert result == {"count": "42"}
-
-    def test_validate_converts_float_value_to_string(self) -> None:
-        """Test that float values are converted to strings."""
-        tags = {"ratio": 0.5}
-
-        result = TagValidator.validate(tags)
-
-        assert result == {"ratio": "0.5"}
-
-    def test_validate_converts_bool_value_to_string(self) -> None:
-        """Test that boolean values are converted to strings."""
-        tags = {"active": True}
-
-        result = TagValidator.validate(tags)
-
-        assert result == {"active": "True"}
-
-    def test_validate_non_dict_raises(self) -> None:
-        """Test that non-dict tags raises ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            TagValidator.validate("not a dict")
-
-        assert "must be a dictionary" in str(exc_info.value)
-
-    def test_validate_list_raises(self) -> None:
-        """Test that list tags raises ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            TagValidator.validate(["a", "b"])
-
-        assert "must be a dictionary" in str(exc_info.value)
-
-    def test_validate_too_many_tags_raises(self) -> None:
-        """Test that too many tags raises ValidationError."""
-        tags = {f"key_{i}": f"value_{i}" for i in range(MAX_TAGS_PER_METRIC + 1)}
-
-        with pytest.raises(ValidationError) as exc_info:
-            TagValidator.validate(tags)
-
-        assert "Too many tags" in str(exc_info.value)
-
-    def test_validate_key_too_long_raises(self) -> None:
-        """Test that key exceeding max length raises ValidationError."""
-        long_key = "k" * (MAX_TAG_KEY_LENGTH + 1)
-        tags = {long_key: "value"}
-
-        with pytest.raises(ValidationError) as exc_info:
-            TagValidator.validate(tags)
-
-        assert "exceeds maximum length" in str(exc_info.value)
-
-    def test_validate_value_too_long_raises(self) -> None:
-        """Test that value exceeding max length raises ValidationError."""
-        long_value = "v" * (MAX_TAG_VALUE_LENGTH + 1)
-        tags = {"key": long_value}
-
-        with pytest.raises(ValidationError) as exc_info:
-            TagValidator.validate(tags)
-
-        assert "exceeds maximum length" in str(exc_info.value)
-
-    def test_validate_non_string_key_raises(self) -> None:
-        """Test that non-string key raises ValidationError."""
-        tags = {123: "value"}  # type: ignore
-
-        with pytest.raises(ValidationError) as exc_info:
-            TagValidator.validate(tags)
-
-        assert "key must be a string" in str(exc_info.value)
-
-    def test_validate_empty_key_raises(self) -> None:
-        """Test that empty key raises ValidationError."""
-        tags = {"": "value"}
-
-        with pytest.raises(ValidationError) as exc_info:
-            TagValidator.validate(tags)
-
-        assert "cannot be empty" in str(exc_info.value)
-
-    def test_validate_whitespace_only_key_raises(self) -> None:
-        """Test that whitespace-only key raises ValidationError."""
-        tags = {"   ": "value"}
-
-        with pytest.raises(ValidationError) as exc_info:
-            TagValidator.validate(tags)
-
-        assert "cannot be empty" in str(exc_info.value)
-
-    def test_validate_none_value_converts_to_empty_string(self) -> None:
-        """Test that None value is converted to empty string."""
-        tags = {"key": None}
-
-        result = TagValidator.validate(tags)
-
-        assert result == {"key": ""}
 
 
 class TestEntityIdValidator:

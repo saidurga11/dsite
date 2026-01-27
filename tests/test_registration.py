@@ -1,305 +1,194 @@
 """Tests for Pulse SDK registration loader."""
 
-from pathlib import Path
-
 import pytest
 
 from pulse.constants import MetricType
 from pulse.exceptions import ConfigurationError
 from pulse.registration import RegistrationLoader
+from pulse.registry import (
+    METRICS_REGISTRY,
+    Metric,
+    Owners,
+    PulseQueues,
+    ServiceSchema,
+    get_service_registry,
+    list_services,
+)
 
 
 class TestRegistrationLoader:
     """Tests for RegistrationLoader."""
 
-    def test_load_valid_registration(
-        self, registry_with_test_service: Path
-    ) -> None:
+    def test_load_valid_registration(self) -> None:
         """Test loading a valid service registration."""
-        loader = RegistrationLoader(registry_with_test_service)
+        loader = RegistrationLoader()
 
-        registration = loader.load("test_service")
+        registration = loader.load("leverage")
 
-        assert registration.service == "test_service"
-        assert registration.owner == "test_team"
-        assert registration.queue_name == "TEST_QUEUE"
-        assert len(registration.metrics) == 3
-        assert "test_counter" in registration.metrics
-        assert "test_gauge" in registration.metrics
-        assert "test_timing" in registration.metrics
+        assert registration.service == "leverage"
+        assert registration.owner == "data_science"
+        assert registration.queue_name == "PULSE_LEVERAGE_METRICS_QUEUE"
+        assert len(registration.metrics) == 2
+        assert "tagged" in registration.metrics
+        assert "match_latency_ms" in registration.metrics
 
-    def test_load_metric_types_correctly(
-        self, registry_with_test_service: Path
-    ) -> None:
+    def test_load_metric_types_correctly(self) -> None:
         """Test that metric types are loaded correctly."""
-        loader = RegistrationLoader(registry_with_test_service)
+        loader = RegistrationLoader()
 
-        registration = loader.load("test_service")
+        registration = loader.load("leverage")
 
-        assert registration.metrics["test_counter"].metric_type == MetricType.COUNTER
-        assert registration.metrics["test_gauge"].metric_type == MetricType.GAUGE
-        assert registration.metrics["test_timing"].metric_type == MetricType.TIMING
+        assert registration.metrics["tagged"].metric_type == MetricType.COUNTER
+        assert registration.metrics["match_latency_ms"].metric_type == MetricType.TIMING
 
-    def test_load_deduplicate_correctly(
-        self, registry_with_test_service: Path
-    ) -> None:
+    def test_load_deduplicate_correctly(self) -> None:
         """Test that deduplicate flag is loaded correctly."""
-        loader = RegistrationLoader(registry_with_test_service)
+        loader = RegistrationLoader()
 
-        registration = loader.load("test_service")
+        registration = loader.load("leverage")
 
-        assert registration.metrics["test_counter"].deduplicate is True
-        assert registration.metrics["test_gauge"].deduplicate is True
-        assert registration.metrics["test_timing"].deduplicate is False
+        assert registration.metrics["tagged"].deduplicate is True
+        assert registration.metrics["match_latency_ms"].deduplicate is False
 
-    def test_load_nonexistent_service_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
+    def test_load_nonexistent_service_raises(self) -> None:
         """Test that loading non-existent service raises ConfigurationError."""
-        loader = RegistrationLoader(temp_registry_dir)
+        loader = RegistrationLoader()
 
         with pytest.raises(ConfigurationError) as exc_info:
             loader.load("nonexistent")
 
         assert "not registered" in str(exc_info.value)
 
-    def test_load_empty_service_name_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
+    def test_load_empty_service_name_raises(self) -> None:
         """Test that empty service name raises ConfigurationError."""
-        loader = RegistrationLoader(temp_registry_dir)
+        loader = RegistrationLoader()
 
         with pytest.raises(ConfigurationError) as exc_info:
             loader.load("")
 
         assert "cannot be empty" in str(exc_info.value)
 
-    def test_load_missing_required_field_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that missing required field raises ConfigurationError."""
-        # Create config missing 'owner'
-        config = """service: test_service
-queue_name: TEST_QUEUE
-metrics:
-  - name: test
-    type: counter
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("test_service")
+class TestServiceSchema:
+    """Tests for ServiceSchema."""
 
-        assert "Missing required field 'owner'" in str(exc_info.value)
+    def test_create_service_schema(self) -> None:
+        """Test creating a ServiceSchema."""
+        schema = ServiceSchema(
+            service="test_service",
+            queue_name=PulseQueues.LEVERAGE_METRICS,
+            owner=Owners.DATA_SCIENCE,
+            metrics=(
+                Metric(name="test_metric", type=MetricType.COUNTER),
+            ),
+        )
 
-    def test_load_service_name_mismatch_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that service name mismatch raises ConfigurationError."""
-        config = """service: wrong_name
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  - name: test
-    type: counter
-"""
-        (temp_registry_dir / "my_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
+        assert schema.service == "test_service"
+        assert schema.queue_name == PulseQueues.LEVERAGE_METRICS
+        assert schema.owner == Owners.DATA_SCIENCE
+        assert len(schema.metrics) == 1
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("my_service")
+    def test_get_metric(self) -> None:
+        """Test getting a metric by name."""
+        schema = ServiceSchema(
+            service="test",
+            queue_name=PulseQueues.LEVERAGE_METRICS,
+            owner=Owners.DATA_SCIENCE,
+            metrics=(
+                Metric(name="metric_a", type=MetricType.COUNTER),
+                Metric(name="metric_b", type=MetricType.GAUGE),
+            ),
+        )
 
-        assert "Service name mismatch" in str(exc_info.value)
+        metric = schema.get_metric("metric_a")
+        assert metric is not None
+        assert metric.name == "metric_a"
 
-    def test_load_invalid_metric_type_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that invalid metric type raises ConfigurationError."""
-        config = """service: test_service
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  - name: test
-    type: invalid_type
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
+        missing = schema.get_metric("nonexistent")
+        assert missing is None
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("test_service")
+    def test_has_metric(self) -> None:
+        """Test checking if a metric exists."""
+        schema = ServiceSchema(
+            service="test",
+            queue_name=PulseQueues.LEVERAGE_METRICS,
+            owner=Owners.DATA_SCIENCE,
+            metrics=(
+                Metric(name="metric_a", type=MetricType.COUNTER),
+            ),
+        )
 
-        assert "Invalid metric type" in str(exc_info.value)
+        assert schema.has_metric("metric_a") is True
+        assert schema.has_metric("nonexistent") is False
 
-    def test_load_duplicate_metric_names_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that duplicate metric names raise ConfigurationError."""
-        config = """service: test_service
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  - name: duplicate_name
-    type: counter
-  - name: duplicate_name
-    type: gauge
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("test_service")
+class TestMetric:
+    """Tests for Metric dataclass."""
 
-        assert "Duplicate metric name" in str(exc_info.value)
+    def test_create_metric_with_defaults(self) -> None:
+        """Test creating a metric with default values."""
+        metric = Metric(name="test")
 
-    def test_load_invalid_deduplicate_value_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that invalid deduplicate value raises ConfigurationError."""
-        config = """service: test_service
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  - name: test
-    type: counter
-    deduplicate: "yes"
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
+        assert metric.name == "test"
+        assert metric.type == MetricType.COUNTER
+        assert metric.deduplicate is True
+        assert metric.description == ""
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("test_service")
+    def test_create_metric_with_all_fields(self) -> None:
+        """Test creating a metric with all fields specified."""
+        metric = Metric(
+            name="latency",
+            type=MetricType.TIMING,
+            deduplicate=False,
+            description="Request latency",
+        )
 
-        assert "must be a boolean" in str(exc_info.value)
+        assert metric.name == "latency"
+        assert metric.type == MetricType.TIMING
+        assert metric.deduplicate is False
+        assert metric.description == "Request latency"
 
-    def test_load_metric_missing_name_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that metric missing name raises ConfigurationError."""
-        config = """service: test_service
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  - type: counter
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("test_service")
+class TestRegistryFunctions:
+    """Tests for registry helper functions."""
 
-        assert "missing 'name'" in str(exc_info.value)
+    def test_get_service_registry_existing(self) -> None:
+        """Test getting an existing service."""
+        schema = get_service_registry("leverage")
 
-    def test_load_metric_missing_type_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that metric missing type raises ConfigurationError."""
-        config = """service: test_service
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  - name: test
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
+        assert schema is not None
+        assert schema.service == "leverage"
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("test_service")
+    def test_get_service_registry_nonexistent(self) -> None:
+        """Test getting a non-existent service."""
+        schema = get_service_registry("nonexistent")
 
-        assert "missing 'type'" in str(exc_info.value)
+        assert schema is None
 
-    def test_load_invalid_yaml_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that invalid YAML raises ConfigurationError."""
-        config = """this is: not: valid: yaml:
-  - [[[
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
+    def test_list_services(self) -> None:
+        """Test listing all registered services."""
+        services = list_services()
 
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("test_service")
+        assert isinstance(services, list)
+        assert "leverage" in services
 
-        assert "Invalid YAML" in str(exc_info.value)
 
-    def test_load_deduplicate_defaults_to_true(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that deduplicate defaults to True when not specified."""
-        config = """service: test_service
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  - name: test
-    type: counter
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
+class TestMetricsRegistry:
+    """Tests for the METRICS_REGISTRY."""
 
-        registration = loader.load("test_service")
+    def test_registry_is_list(self) -> None:
+        """Test that METRICS_REGISTRY is a list."""
+        assert isinstance(METRICS_REGISTRY, list)
 
-        assert registration.metrics["test"].deduplicate is True
+    def test_registry_contains_valid_schemas(self) -> None:
+        """Test that all entries in registry are valid ServiceSchemas."""
+        for schema in METRICS_REGISTRY:
+            assert isinstance(schema, ServiceSchema)
+            assert schema.service
+            assert schema.queue_name
+            assert schema.owner
 
-    def test_load_description_defaults_to_empty(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that description defaults to empty string when not specified."""
-        config = """service: test_service
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  - name: test
-    type: counter
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
-
-        registration = loader.load("test_service")
-
-        assert registration.metrics["test"].description == ""
-
-    def test_load_with_description(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test loading metric with description."""
-        config = """service: test_service
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  - name: test
-    type: counter
-    description: "This is a test metric"
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
-
-        registration = loader.load("test_service")
-
-        assert registration.metrics["test"].description == "This is a test metric"
-
-    def test_load_uses_default_registry_path(self) -> None:
-        """Test that loader uses default registry path when none specified."""
-        loader = RegistrationLoader()
-
-        # The default path should be set to the registry directory
-        assert loader._registry_path.name == "registry"
-        assert loader._registry_path.parent.name == "pulse"
-
-    def test_load_metrics_not_list_raises(
-        self, temp_registry_dir: Path
-    ) -> None:
-        """Test that metrics not being a list raises ConfigurationError."""
-        config = """service: test_service
-owner: test_team
-queue_name: TEST_QUEUE
-metrics:
-  test: counter
-"""
-        (temp_registry_dir / "test_service.yaml").write_text(config)
-        loader = RegistrationLoader(temp_registry_dir)
-
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader.load("test_service")
-
-        assert "'metrics' must be a list" in str(exc_info.value)
+    def test_leverage_service_in_registry(self) -> None:
+        """Test that leverage service is in the registry."""
+        services = [s.service for s in METRICS_REGISTRY]
+        assert "leverage" in services

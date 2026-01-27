@@ -1,7 +1,5 @@
 """Tests for Pulse SDK client."""
 
-from pathlib import Path
-
 import pytest
 
 from pulse import AirflowContext, MockQueueAdapter, PulseClient
@@ -13,15 +11,13 @@ class TestPulseClientInit:
 
     def test_init_with_valid_service_and_context(
         self,
-        registry_with_test_service: Path,
         sample_airflow_context: AirflowContext,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
         """Test initializing with valid service and context."""
         client = PulseClient(
-            service="test_service",
+            service="leverage",
             airflow_context=sample_airflow_context,
-            registry_path=registry_with_test_service,
             queue_adapter=mock_queue_adapter,
         )
 
@@ -44,7 +40,6 @@ class TestPulseClientInit:
 
     def test_init_with_nonexistent_service(
         self,
-        temp_registry_dir: Path,
         sample_airflow_context: AirflowContext,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
@@ -53,7 +48,6 @@ class TestPulseClientInit:
             PulseClient(
                 service="nonexistent",
                 airflow_context=sample_airflow_context,
-                registry_path=temp_registry_dir,
                 queue_adapter=mock_queue_adapter,
             )
 
@@ -61,15 +55,13 @@ class TestPulseClientInit:
 
     def test_init_with_none_airflow_context(
         self,
-        registry_with_test_service: Path,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
         """Test that None airflow_context raises ConfigurationError."""
         with pytest.raises(ConfigurationError) as exc_info:
             PulseClient(
-                service="test_service",
+                service="leverage",
                 airflow_context=None,  # type: ignore
-                registry_path=registry_with_test_service,
                 queue_adapter=mock_queue_adapter,
             )
 
@@ -77,15 +69,13 @@ class TestPulseClientInit:
 
     def test_init_with_invalid_airflow_context_type(
         self,
-        registry_with_test_service: Path,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
         """Test that invalid airflow_context type raises ConfigurationError."""
         with pytest.raises(ConfigurationError) as exc_info:
             PulseClient(
-                service="test_service",
+                service="leverage",
                 airflow_context={"dag_id": "dag", "task_id": "task", "run_id": "run"},  # type: ignore
-                registry_path=registry_with_test_service,
                 queue_adapter=mock_queue_adapter,
             )
 
@@ -93,7 +83,6 @@ class TestPulseClientInit:
 
     def test_init_with_empty_dag_id(
         self,
-        registry_with_test_service: Path,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
         """Test that empty dag_id raises ConfigurationError."""
@@ -101,9 +90,8 @@ class TestPulseClientInit:
 
         with pytest.raises(ConfigurationError) as exc_info:
             PulseClient(
-                service="test_service",
+                service="leverage",
                 airflow_context=context,
-                registry_path=registry_with_test_service,
                 queue_adapter=mock_queue_adapter,
             )
 
@@ -111,7 +99,6 @@ class TestPulseClientInit:
 
     def test_init_with_empty_task_id(
         self,
-        registry_with_test_service: Path,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
         """Test that empty task_id raises ConfigurationError."""
@@ -119,9 +106,8 @@ class TestPulseClientInit:
 
         with pytest.raises(ConfigurationError) as exc_info:
             PulseClient(
-                service="test_service",
+                service="leverage",
                 airflow_context=context,
-                registry_path=registry_with_test_service,
                 queue_adapter=mock_queue_adapter,
             )
 
@@ -129,7 +115,6 @@ class TestPulseClientInit:
 
     def test_init_with_empty_run_id(
         self,
-        registry_with_test_service: Path,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
         """Test that empty run_id raises ConfigurationError."""
@@ -137,9 +122,8 @@ class TestPulseClientInit:
 
         with pytest.raises(ConfigurationError) as exc_info:
             PulseClient(
-                service="test_service",
+                service="leverage",
                 airflow_context=context,
-                registry_path=registry_with_test_service,
                 queue_adapter=mock_queue_adapter,
             )
 
@@ -152,15 +136,13 @@ class TestPulseClientEmit:
     @pytest.fixture
     def client(
         self,
-        registry_with_test_service: Path,
         sample_airflow_context: AirflowContext,
         mock_queue_adapter: MockQueueAdapter,
     ) -> PulseClient:
         """Create a PulseClient for testing."""
         return PulseClient(
-            service="test_service",
+            service="leverage",
             airflow_context=sample_airflow_context,
-            registry_path=registry_with_test_service,
             queue_adapter=mock_queue_adapter,
         )
 
@@ -171,19 +153,18 @@ class TestPulseClientEmit:
     ) -> None:
         """Test emitting a counter metric with deduplication."""
         result = client.emit(
-            metric_name="test_counter",
+            metric_name="tagged",
             value=1,
             entity_id="tx_123",
-            tags={"category": "mca"},
         )
 
         assert result is True
         assert len(mock_queue_adapter.messages) == 1
 
         message = mock_queue_adapter.messages[0]
-        assert message.metric_name == "test_counter"
+        assert message.metric_name == "tagged"
         assert message.value == 1.0
-        assert message.tags == {"category": "mca"}
+        assert message.entity_id == "tx_123"
 
     def test_emit_timing_without_dedup(
         self,
@@ -193,12 +174,12 @@ class TestPulseClientEmit:
         """Test emitting a timing metric without deduplication."""
         # Emit twice with same entity_id - both should succeed (no dedup)
         result1 = client.emit(
-            metric_name="test_timing",
+            metric_name="match_latency_ms",
             value=45.2,
             entity_id="tx_123",
         )
         result2 = client.emit(
-            metric_name="test_timing",
+            metric_name="match_latency_ms",
             value=50.5,
             entity_id="tx_123",
         )
@@ -215,7 +196,7 @@ class TestPulseClientEmit:
         """Test that duplicate emissions are rejected."""
         # First emit succeeds
         result1 = client.emit(
-            metric_name="test_counter",
+            metric_name="tagged",
             value=1,
             entity_id="tx_123",
         )
@@ -223,7 +204,7 @@ class TestPulseClientEmit:
 
         # Second emit with same entity_id is rejected
         result2 = client.emit(
-            metric_name="test_counter",
+            metric_name="tagged",
             value=1,
             entity_id="tx_123",
         )
@@ -253,7 +234,7 @@ class TestPulseClientEmit:
         """Test that missing entity_id raises ValidationError when dedup enabled."""
         with pytest.raises(ValidationError) as exc_info:
             client.emit(
-                metric_name="test_counter",
+                metric_name="tagged",
                 value=1,
                 entity_id="",  # Empty
             )
@@ -267,7 +248,7 @@ class TestPulseClientEmit:
         """Test that None entity_id raises ValidationError when dedup enabled."""
         with pytest.raises(ValidationError) as exc_info:
             client.emit(
-                metric_name="test_counter",
+                metric_name="tagged",
                 value=1,
                 entity_id=None,  # type: ignore
             )
@@ -281,45 +262,12 @@ class TestPulseClientEmit:
         """Test that invalid value raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
             client.emit(
-                metric_name="test_counter",
+                metric_name="tagged",
                 value="not a number",  # type: ignore
                 entity_id="tx_123",
             )
 
         assert "must be numeric" in str(exc_info.value)
-
-    def test_emit_with_tags(
-        self,
-        client: PulseClient,
-        mock_queue_adapter: MockQueueAdapter,
-    ) -> None:
-        """Test emitting with tags."""
-        result = client.emit(
-            metric_name="test_counter",
-            value=1,
-            entity_id="tx_123",
-            tags={"category": "mca", "caller": "de"},
-        )
-
-        assert result is True
-        message = mock_queue_adapter.messages[0]
-        assert message.tags == {"category": "mca", "caller": "de"}
-
-    def test_emit_without_tags(
-        self,
-        client: PulseClient,
-        mock_queue_adapter: MockQueueAdapter,
-    ) -> None:
-        """Test emitting without tags."""
-        result = client.emit(
-            metric_name="test_counter",
-            value=1,
-            entity_id="tx_123",
-        )
-
-        assert result is True
-        message = mock_queue_adapter.messages[0]
-        assert message.tags == {}
 
     def test_idempotency_key_format(
         self,
@@ -329,7 +277,7 @@ class TestPulseClientEmit:
     ) -> None:
         """Test that idempotency key has correct format."""
         client.emit(
-            metric_name="test_counter",
+            metric_name="tagged",
             value=1,
             entity_id="tx_abc123",
         )
@@ -339,7 +287,7 @@ class TestPulseClientEmit:
             f"{sample_airflow_context.dag_id}_"
             f"{sample_airflow_context.task_id}_"
             f"{sample_airflow_context.run_id}_"
-            "test_counter_"
+            "tagged_"
             "tx_abc123"
         )
         assert message.idempotency_key == expected_key
@@ -351,15 +299,13 @@ class TestPulseClientEmitBatch:
     @pytest.fixture
     def client(
         self,
-        registry_with_test_service: Path,
         sample_airflow_context: AirflowContext,
         mock_queue_adapter: MockQueueAdapter,
     ) -> PulseClient:
         """Create a PulseClient for testing."""
         return PulseClient(
-            service="test_service",
+            service="leverage",
             airflow_context=sample_airflow_context,
-            registry_path=registry_with_test_service,
             queue_adapter=mock_queue_adapter,
         )
 
@@ -370,9 +316,9 @@ class TestPulseClientEmitBatch:
     ) -> None:
         """Test batch emitting multiple metrics."""
         metrics = [
-            {"metric_name": "test_counter", "value": 1, "entity_id": "tx_001"},
-            {"metric_name": "test_counter", "value": 1, "entity_id": "tx_002"},
-            {"metric_name": "test_gauge", "value": 50.5, "entity_id": "tx_003"},
+            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
+            {"metric_name": "tagged", "value": 1, "entity_id": "tx_002"},
+            {"metric_name": "match_latency_ms", "value": 50.5, "entity_id": "tx_003"},
         ]
 
         result = client.emit_batch(metrics)
@@ -387,9 +333,9 @@ class TestPulseClientEmitBatch:
     ) -> None:
         """Test batch emitting with duplicate entity_ids."""
         metrics = [
-            {"metric_name": "test_counter", "value": 1, "entity_id": "tx_001"},
-            {"metric_name": "test_counter", "value": 1, "entity_id": "tx_001"},  # Duplicate
-            {"metric_name": "test_counter", "value": 1, "entity_id": "tx_002"},
+            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
+            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},  # Duplicate
+            {"metric_name": "tagged", "value": 1, "entity_id": "tx_002"},
         ]
 
         result = client.emit_batch(metrics)
@@ -403,9 +349,9 @@ class TestPulseClientEmitBatch:
     ) -> None:
         """Test that validation errors show the metric index."""
         metrics = [
-            {"metric_name": "test_counter", "value": 1, "entity_id": "tx_001"},
+            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
             {"metric_name": "unknown_metric", "value": 1, "entity_id": "tx_002"},  # Invalid
-            {"metric_name": "test_counter", "value": 1, "entity_id": "tx_003"},
+            {"metric_name": "tagged", "value": 1, "entity_id": "tx_003"},
         ]
 
         with pytest.raises(ValidationError) as exc_info:
@@ -422,40 +368,13 @@ class TestPulseClientEmitBatch:
 
         assert result == 0
 
-    def test_emit_batch_with_tags(
-        self,
-        client: PulseClient,
-        mock_queue_adapter: MockQueueAdapter,
-    ) -> None:
-        """Test batch emitting with tags."""
-        metrics = [
-            {
-                "metric_name": "test_counter",
-                "value": 1,
-                "entity_id": "tx_001",
-                "tags": {"category": "mca"},
-            },
-            {
-                "metric_name": "test_counter",
-                "value": 1,
-                "entity_id": "tx_002",
-                "tags": {"category": "factor"},
-            },
-        ]
-
-        result = client.emit_batch(metrics)
-
-        assert result == 2
-        assert mock_queue_adapter.messages[0].tags == {"category": "mca"}
-        assert mock_queue_adapter.messages[1].tags == {"category": "factor"}
-
     def test_emit_batch_missing_required_field_raises(
         self,
         client: PulseClient,
     ) -> None:
         """Test that missing required field raises ValidationError."""
         metrics = [
-            {"metric_name": "test_counter", "entity_id": "tx_001"},  # Missing value
+            {"metric_name": "tagged", "entity_id": "tx_001"},  # Missing value
         ]
 
         with pytest.raises(ValidationError) as exc_info:
@@ -490,7 +409,6 @@ class TestPulseClientIntegration:
 
     def test_full_workflow(
         self,
-        registry_with_leverage: Path,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
         """Test a complete workflow with the leverage service."""
@@ -503,7 +421,6 @@ class TestPulseClientIntegration:
         client = PulseClient(
             service="leverage",
             airflow_context=context,
-            registry_path=registry_with_leverage,
             queue_adapter=mock_queue_adapter,
         )
 
@@ -512,7 +429,6 @@ class TestPulseClientIntegration:
             metric_name="tagged",
             value=1,
             entity_id="tx_abc123",
-            tags={"category": "mca", "caller": "de"},
         )
         assert result1 is True
 
@@ -521,7 +437,6 @@ class TestPulseClientIntegration:
             metric_name="match_latency_ms",
             value=45.2,
             entity_id="tx_abc123",
-            tags={"step": "matching"},
         )
         assert result2 is True
 
@@ -530,7 +445,6 @@ class TestPulseClientIntegration:
             metric_name="tagged",
             value=1,
             entity_id="tx_abc123",
-            tags={"category": "mca"},
         )
         assert result3 is False
 
@@ -541,7 +455,6 @@ class TestPulseClientIntegration:
         counter_msg = mock_queue_adapter.messages[0]
         assert counter_msg.metric_name == "tagged"
         assert counter_msg.value == 1.0
-        assert "category" in counter_msg.tags
 
         # Verify timing message
         timing_msg = mock_queue_adapter.messages[1]
@@ -550,7 +463,6 @@ class TestPulseClientIntegration:
 
     def test_batch_workflow(
         self,
-        registry_with_leverage: Path,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
         """Test batch emission workflow."""
@@ -563,29 +475,13 @@ class TestPulseClientIntegration:
         client = PulseClient(
             service="leverage",
             airflow_context=context,
-            registry_path=registry_with_leverage,
             queue_adapter=mock_queue_adapter,
         )
 
         metrics = [
-            {
-                "metric_name": "tagged",
-                "value": 1,
-                "entity_id": "tx_001",
-                "tags": {"category": "mca"},
-            },
-            {
-                "metric_name": "tagged",
-                "value": 1,
-                "entity_id": "tx_002",
-                "tags": {"category": "factor"},
-            },
-            {
-                "metric_name": "match_latency_ms",
-                "value": 45.2,
-                "entity_id": "tx_001",
-                "tags": {"step": "matching"},
-            },
+            {"metric_name": "tagged", "value": 1, "entity_id": "tx_001"},
+            {"metric_name": "tagged", "value": 1, "entity_id": "tx_002"},
+            {"metric_name": "match_latency_ms", "value": 45.2, "entity_id": "tx_001"},
         ]
 
         result = client.emit_batch(metrics)

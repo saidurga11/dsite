@@ -20,20 +20,38 @@ Usage:
         metric_name="tagged",
         value=1,
         entity_id="tx_abc123",
-        tags={"category": "mca"},
     )
 """
 
 from pulse.client import PulseClient
+from pulse.constants import MetricType
 from pulse.exceptions import ConfigurationError, EmitError, PulseError, ValidationError
 from pulse.models import AirflowContext
 from pulse.queue_adapter import MockQueueAdapter, QueueAdapter
+from pulse.registry import (
+    METRICS_REGISTRY,
+    Metric,
+    Owners,
+    PulseQueues,
+    ServiceSchema,
+    get_service_registry,
+    list_services,
+)
 
 __all__ = [
     # Main client
     "PulseClient",
     # Models
     "AirflowContext",
+    # Registry
+    "METRICS_REGISTRY",
+    "ServiceSchema",
+    "Metric",
+    "MetricType",
+    "PulseQueues",
+    "Owners",
+    "get_service_registry",
+    "list_services",
     # Exceptions
     "PulseError",
     "ConfigurationError",

@@ -14,9 +14,6 @@ class MetricType(str, Enum):
 
 # Validation limits
 MAX_METRIC_NAME_LENGTH = 255
-MAX_TAG_KEY_LENGTH = 64
-MAX_TAG_VALUE_LENGTH = 256
-MAX_TAGS_PER_METRIC = 20
 MAX_ENTITY_ID_LENGTH = 512
 
 # Metric name must start with letter, then letters/numbers/underscores/dots/hyphens

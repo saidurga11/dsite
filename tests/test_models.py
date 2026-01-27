@@ -138,17 +138,15 @@ class TestMetricMessage:
             timestamp="2026-01-08T14:30:00.123456Z",
             metric_name="tagged",
             value=1.0,
-            tags={"category": "mca"},
+            entity_id="tx_abc123",
             idempotency_key="dag_task_run_tagged_tx123",
-            tags_hash="a1b2c3d4e5f67890",
         )
 
         assert message.timestamp == "2026-01-08T14:30:00.123456Z"
         assert message.metric_name == "tagged"
         assert message.value == 1.0
-        assert message.tags == {"category": "mca"}
+        assert message.entity_id == "tx_abc123"
         assert message.idempotency_key == "dag_task_run_tagged_tx123"
-        assert message.tags_hash == "a1b2c3d4e5f67890"
 
     def test_message_to_dict(self) -> None:
         """Test converting message to dictionary."""
@@ -156,9 +154,8 @@ class TestMetricMessage:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="tagged",
             value=1.0,
-            tags={"key": "value"},
+            entity_id="tx_123",
             idempotency_key="test_key",
-            tags_hash="abc123",
         )
 
         result = message.to_dict()
@@ -167,9 +164,8 @@ class TestMetricMessage:
             "timestamp": "2026-01-08T14:30:00Z",
             "metric_name": "tagged",
             "value": 1.0,
-            "tags": {"key": "value"},
+            "entity_id": "tx_123",
             "idempotency_key": "test_key",
-            "tags_hash": "abc123",
         }
 
     def test_message_is_frozen(self) -> None:
@@ -178,28 +174,9 @@ class TestMetricMessage:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="test",
             value=1.0,
-            tags={},
+            entity_id="tx_123",
             idempotency_key="key",
-            tags_hash="hash",
         )
 
         with pytest.raises(AttributeError):
             message.value = 2.0  # type: ignore
-
-    def test_message_to_dict_creates_copy_of_tags(self) -> None:
-        """Test that to_dict creates a copy of tags."""
-        original_tags = {"key": "value"}
-        message = MetricMessage(
-            timestamp="2026-01-08T14:30:00Z",
-            metric_name="test",
-            value=1.0,
-            tags=original_tags,
-            idempotency_key="key",
-            tags_hash="hash",
-        )
-
-        result = message.to_dict()
-        result["tags"]["new_key"] = "new_value"
-
-        # Original message tags should not be affected
-        assert "new_key" not in message.tags

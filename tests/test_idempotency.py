@@ -1,10 +1,11 @@
 """Tests for Pulse SDK idempotency module."""
 
 import re
+
 import pytest
 
 from pulse.constants import MetricType
-from pulse.idempotency import IdempotencyKeyBuilder, TagsHasher
+from pulse.idempotency import IdempotencyKeyBuilder
 from pulse.models import AirflowContext, MetricDefinition
 
 
@@ -130,108 +131,3 @@ class TestIdempotencyKeyBuilder:
         key2 = builder2.build("test", "entity", dedup_metric)
 
         assert key1 != key2
-
-
-class TestTagsHasher:
-    """Tests for TagsHasher."""
-
-    def test_hash_empty_dict(self) -> None:
-        """Test hashing empty dictionary."""
-        result = TagsHasher.hash({})
-
-        assert len(result) == 16
-        assert all(c in "0123456789abcdef" for c in result)
-
-    def test_hash_deterministic(self) -> None:
-        """Test that same tags produce same hash."""
-        tags = {"category": "mca", "caller": "de"}
-
-        hash1 = TagsHasher.hash(tags)
-        hash2 = TagsHasher.hash(tags)
-
-        assert hash1 == hash2
-
-    def test_hash_order_independent(self) -> None:
-        """Test that tag order doesn't affect hash."""
-        tags1 = {"a": "1", "b": "2", "c": "3"}
-        tags2 = {"c": "3", "a": "1", "b": "2"}
-        tags3 = {"b": "2", "c": "3", "a": "1"}
-
-        hash1 = TagsHasher.hash(tags1)
-        hash2 = TagsHasher.hash(tags2)
-        hash3 = TagsHasher.hash(tags3)
-
-        assert hash1 == hash2 == hash3
-
-    def test_hash_case_insensitive_keys(self) -> None:
-        """Test that key case doesn't affect hash."""
-        tags1 = {"Key": "value", "ANOTHER": "val"}
-        tags2 = {"key": "value", "another": "val"}
-        tags3 = {"KEY": "value", "Another": "val"}
-
-        hash1 = TagsHasher.hash(tags1)
-        hash2 = TagsHasher.hash(tags2)
-        hash3 = TagsHasher.hash(tags3)
-
-        assert hash1 == hash2 == hash3
-
-    def test_hash_whitespace_normalized(self) -> None:
-        """Test that whitespace is normalized."""
-        tags1 = {"  key  ": "  value  "}
-        tags2 = {"key": "value"}
-
-        hash1 = TagsHasher.hash(tags1)
-        hash2 = TagsHasher.hash(tags2)
-
-        assert hash1 == hash2
-
-    def test_hash_different_values_produce_different_hashes(self) -> None:
-        """Test that different values produce different hashes."""
-        tags1 = {"category": "mca"}
-        tags2 = {"category": "factor"}
-
-        hash1 = TagsHasher.hash(tags1)
-        hash2 = TagsHasher.hash(tags2)
-
-        assert hash1 != hash2
-
-    def test_hash_different_keys_produce_different_hashes(self) -> None:
-        """Test that different keys produce different hashes."""
-        tags1 = {"category": "value"}
-        tags2 = {"caller": "value"}
-
-        hash1 = TagsHasher.hash(tags1)
-        hash2 = TagsHasher.hash(tags2)
-
-        assert hash1 != hash2
-
-    def test_hash_returns_16_chars(self) -> None:
-        """Test that hash is always 16 characters."""
-        test_cases = [
-            {},
-            {"a": "b"},
-            {"key": "value", "key2": "value2"},
-            {f"key_{i}": f"value_{i}" for i in range(10)},
-        ]
-
-        for tags in test_cases:
-            result = TagsHasher.hash(tags)
-            assert len(result) == 16
-
-    def test_hash_with_none_value(self) -> None:
-        """Test hashing tags with None value."""
-        tags = {"key": None}
-
-        result = TagsHasher.hash(tags)
-
-        assert len(result) == 16
-
-    def test_hash_with_numeric_values(self) -> None:
-        """Test hashing tags with numeric values (converted to strings)."""
-        tags1 = {"count": 42}
-        tags2 = {"count": "42"}
-
-        hash1 = TagsHasher.hash(tags1)
-        hash2 = TagsHasher.hash(tags2)
-
-        assert hash1 == hash2

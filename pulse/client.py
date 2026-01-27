@@ -2,18 +2,16 @@
 
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Optional, Union
 
 from pulse.exceptions import ConfigurationError, ValidationError
-from pulse.idempotency import IdempotencyKeyBuilder, TagsHasher
+from pulse.idempotency import IdempotencyKeyBuilder
 from pulse.models import AirflowContext, MetricMessage, ServiceRegistration
 from pulse.queue_adapter import EQMAdapter, QueueAdapter
 from pulse.registration import RegistrationLoader
 from pulse.validators import (
     EntityIdValidator,
     MetricValidator,
-    TagValidator,
     ValueValidator,
 )
 
@@ -39,7 +37,6 @@ class PulseClient:
             metric_name="tagged",
             value=1,
             entity_id="tx_abc123",
-            tags={"category": "mca"},
         )
     """
 
@@ -47,7 +44,6 @@ class PulseClient:
         self,
         service: str,
         airflow_context: AirflowContext,
-        registry_path: Optional[Path] = None,
         queue_adapter: Optional[QueueAdapter] = None,
     ) -> None:
         """
@@ -56,7 +52,6 @@ class PulseClient:
         Args:
             service: Registered service name (e.g., "leverage")
             airflow_context: Airflow dag_id, task_id, run_id for dedup
-            registry_path: Optional custom path to registry directory
             queue_adapter: Optional adapter for testing (uses EQM by default)
 
         Raises:
@@ -67,7 +62,7 @@ class PulseClient:
         self._airflow_context = airflow_context
 
         # Load service registration
-        loader = RegistrationLoader(registry_path)
+        loader = RegistrationLoader()
         self._registration: ServiceRegistration = loader.load(service)
 
         # Initialize components
@@ -113,7 +108,6 @@ class PulseClient:
         metric_name: str,
         value: Union[int, float],
         entity_id: str,
-        tags: Optional[dict[str, Any]] = None,
     ) -> bool:
         """
         Emit a single metric.
@@ -122,7 +116,6 @@ class PulseClient:
             metric_name: Registered metric name
             value: Numeric value
             entity_id: Unique entity identifier (e.g., transaction_id)
-            tags: Optional key-value pairs for filtering/grouping
 
         Returns:
             True if sent, False if rejected (duplicate or infra error)
@@ -133,7 +126,6 @@ class PulseClient:
         # Validate all parameters
         metric_def = self._metric_validator.validate(metric_name)
         validated_value = ValueValidator.validate(value)
-        validated_tags = TagValidator.validate(tags)
         validated_entity_id = EntityIdValidator.validate(entity_id, metric_def)
 
         # Build idempotency key
@@ -143,9 +135,6 @@ class PulseClient:
             metric_def=metric_def,
         )
 
-        # Compute tags hash
-        tags_hash = TagsHasher.hash(validated_tags)
-
         # Create timestamp
         timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -154,9 +143,8 @@ class PulseClient:
             timestamp=timestamp,
             metric_name=metric_name,
             value=validated_value,
-            tags=validated_tags,
+            entity_id=validated_entity_id,
             idempotency_key=idempotency_key,
-            tags_hash=tags_hash,
         )
 
         # Enqueue - infrastructure errors are caught and logged
@@ -171,7 +159,6 @@ class PulseClient:
         Emit multiple metrics.
 
         Each dict must have: metric_name, value, entity_id
-        Optional: tags
 
         Returns:
             Number of metrics successfully sent
@@ -204,12 +191,10 @@ class PulseClient:
                     raise ValidationError("value is required")
 
                 entity_id = metric.get("entity_id")
-                tags = metric.get("tags")
 
                 # Validate all parameters
                 metric_def = self._metric_validator.validate(metric_name)
                 validated_value = ValueValidator.validate(value)
-                validated_tags = TagValidator.validate(tags)
                 validated_entity_id = EntityIdValidator.validate(
                     entity_id, metric_def
                 )
@@ -221,9 +206,6 @@ class PulseClient:
                     metric_def=metric_def,
                 )
 
-                # Compute tags hash
-                tags_hash = TagsHasher.hash(validated_tags)
-
                 # Create timestamp
                 timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -232,9 +214,8 @@ class PulseClient:
                     timestamp=timestamp,
                     metric_name=metric_name,
                     value=validated_value,
-                    tags=validated_tags,
+                    entity_id=validated_entity_id,
                     idempotency_key=idempotency_key,
-                    tags_hash=tags_hash,
                 )
                 messages.append(message)
 

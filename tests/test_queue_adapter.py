@@ -21,9 +21,8 @@ class TestMockQueueAdapter:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="tagged",
             value=1.0,
-            tags={"category": "mca"},
+            entity_id="tx_abc123",
             idempotency_key="unique_key_1",
-            tags_hash="abc123def456",
         )
 
     def test_enqueue_single_message(
@@ -69,9 +68,8 @@ class TestMockQueueAdapter:
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=float(i),
-                tags={},
+                entity_id=f"tx_{i}",
                 idempotency_key=f"key_{i}",
-                tags_hash="hash",
             )
             for i in range(5)
         ]
@@ -92,9 +90,8 @@ class TestMockQueueAdapter:
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=float(i),
-                tags={},
+                entity_id=f"tx_{i}",
                 idempotency_key=f"key_{i}",
-                tags_hash="hash",
             )
             for i in range(3)
         ]
@@ -114,9 +111,8 @@ class TestMockQueueAdapter:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="tagged",
             value=1.0,
-            tags={},
+            entity_id="tx_first",
             idempotency_key="existing_key",
-            tags_hash="hash",
         )
         adapter.enqueue(first_message)
 
@@ -126,25 +122,22 @@ class TestMockQueueAdapter:
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=2.0,
-                tags={},
+                entity_id="tx_new_1",
                 idempotency_key="new_key_1",
-                tags_hash="hash",
             ),
             MetricMessage(
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=3.0,
-                tags={},
+                entity_id="tx_dup",
                 idempotency_key="existing_key",  # Duplicate!
-                tags_hash="hash",
             ),
             MetricMessage(
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=4.0,
-                tags={},
+                entity_id="tx_new_2",
                 idempotency_key="new_key_2",
-                tags_hash="hash",
             ),
         ]
 
@@ -195,9 +188,8 @@ class TestMockQueueAdapter:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="tagged",
             value=1.0,
-            tags={},
+            entity_id="tx_123",
             idempotency_key="same_key",
-            tags_hash="hash",
         )
 
         # First succeeds

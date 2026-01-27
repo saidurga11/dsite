@@ -1,14 +1,11 @@
 """Validators for the Pulse SDK."""
 
 import math
-from typing import Any, Optional
+from typing import Any
 
 from pulse.constants import (
     MAX_ENTITY_ID_LENGTH,
     MAX_METRIC_NAME_LENGTH,
-    MAX_TAG_KEY_LENGTH,
-    MAX_TAG_VALUE_LENGTH,
-    MAX_TAGS_PER_METRIC,
     METRIC_NAME_PATTERN,
 )
 from pulse.exceptions import ValidationError
@@ -101,67 +98,6 @@ class ValueValidator:
             raise ValidationError("Value cannot be infinite")
 
         return float_value
-
-
-class TagValidator:
-    """Validates and normalizes tags."""
-
-    @staticmethod
-    def validate(tags: Any) -> dict[str, str]:
-        """
-        Validate and normalize tags.
-
-        Args:
-            tags: The tags to validate (can be None)
-
-        Returns:
-            Normalized tags dictionary with string values
-
-        Raises:
-            ValidationError: If tags are invalid
-        """
-        if tags is None:
-            return {}
-
-        if not isinstance(tags, dict):
-            raise ValidationError(
-                f"Tags must be a dictionary, got {type(tags).__name__}"
-            )
-
-        if len(tags) > MAX_TAGS_PER_METRIC:
-            raise ValidationError(
-                f"Too many tags: {len(tags)} exceeds maximum of {MAX_TAGS_PER_METRIC}"
-            )
-
-        normalized: dict[str, str] = {}
-
-        for key, value in tags.items():
-            # Validate key
-            if not isinstance(key, str):
-                raise ValidationError(
-                    f"Tag key must be a string, got {type(key).__name__}"
-                )
-
-            if not key.strip():
-                raise ValidationError("Tag key cannot be empty or whitespace")
-
-            if len(key) > MAX_TAG_KEY_LENGTH:
-                raise ValidationError(
-                    f"Tag key '{key}' exceeds maximum length of {MAX_TAG_KEY_LENGTH}"
-                )
-
-            # Convert value to string and validate length
-            str_value = str(value) if value is not None else ""
-
-            if len(str_value) > MAX_TAG_VALUE_LENGTH:
-                raise ValidationError(
-                    f"Tag value for key '{key}' exceeds maximum length of "
-                    f"{MAX_TAG_VALUE_LENGTH}"
-                )
-
-            normalized[key] = str_value
-
-        return normalized
 
 
 class EntityIdValidator:
