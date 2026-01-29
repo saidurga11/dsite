@@ -4,7 +4,7 @@ import pytest
 
 from pulse import AirflowContext, MockQueueAdapter, AggregationMonitoringService
 from pulse.exceptions import ConfigurationError, ValidationError
-from pulse.registry import LeverageMetrics, Metric, MetricType
+from pulse.registry import LeverageMetrics, Metric
 
 
 class TestAggregationMonitoringServiceInit:
@@ -215,7 +215,7 @@ class TestAggregationMonitoringServiceRecordData:
         service: AggregationMonitoringService,
     ) -> None:
         """Test that recording unregistered metric raises ValidationError."""
-        unregistered_metric = Metric(name="unknown_metric", type=MetricType.COUNTER)
+        unregistered_metric = Metric(name="unknown_metric")
         with pytest.raises(ValidationError) as exc_info:
             service.recordData(
                 metric=unregistered_metric,
@@ -346,7 +346,7 @@ class TestAggregationMonitoringServiceRecordDataBatch:
         service: AggregationMonitoringService,
     ) -> None:
         """Test that validation errors show the metric index."""
-        unregistered_metric = Metric(name="unknown_metric", type=MetricType.COUNTER)
+        unregistered_metric = Metric(name="unknown_metric")
         metrics = [
             {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},
             {"metric": unregistered_metric, "value": 1, "entity_id": "tx_002"},  # Invalid

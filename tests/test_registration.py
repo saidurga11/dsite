@@ -2,7 +2,7 @@
 
 import pytest
 
-from pulse import Metric, MetricType
+from pulse import Metric
 from pulse.registry import (
     METRICS_REGISTRY,
     Owners,
@@ -22,7 +22,7 @@ class TestServiceSchema:
             service="test_service",
             queue_name=PulseQueues.LEVERAGE_METRICS,
             owner=Owners.DATA_SCIENCE,
-            metrics=(Metric(name="test_metric", type=MetricType.COUNTER),),
+            metrics=(Metric(name="test_metric"),),
         )
 
         assert schema.service == "test_service"
@@ -32,8 +32,8 @@ class TestServiceSchema:
 
     def test_get_metric(self) -> None:
         """Test getting a metric by Metric object."""
-        metric_a = Metric(name="metric_a", type=MetricType.COUNTER)
-        metric_b = Metric(name="metric_b", type=MetricType.GAUGE)
+        metric_a = Metric(name="metric_a")
+        metric_b = Metric(name="metric_b")
         schema = ServiceSchema(
             service="test",
             queue_name=PulseQueues.LEVERAGE_METRICS,
@@ -45,13 +45,13 @@ class TestServiceSchema:
         assert found is not None
         assert found.name == "metric_a"
 
-        nonexistent = Metric(name="nonexistent", type=MetricType.COUNTER)
+        nonexistent = Metric(name="nonexistent")
         missing = schema.get_metric(nonexistent)
         assert missing is None
 
     def test_has_metric(self) -> None:
         """Test checking if a metric exists."""
-        metric_a = Metric(name="metric_a", type=MetricType.COUNTER)
+        metric_a = Metric(name="metric_a")
         schema = ServiceSchema(
             service="test",
             queue_name=PulseQueues.LEVERAGE_METRICS,
@@ -60,7 +60,7 @@ class TestServiceSchema:
         )
 
         assert schema.has_metric(metric_a) is True
-        nonexistent = Metric(name="nonexistent", type=MetricType.COUNTER)
+        nonexistent = Metric(name="nonexistent")
         assert schema.has_metric(nonexistent) is False
 
 
@@ -72,19 +72,16 @@ class TestMetric:
         metric = Metric(name="test")
 
         assert metric.name == "test"
-        assert metric.type == MetricType.COUNTER
         assert metric.description == ""
 
-    def test_create_metric_with_all_fields(self) -> None:
-        """Test creating a metric with all fields specified."""
+    def test_create_metric_with_description(self) -> None:
+        """Test creating a metric with description."""
         metric = Metric(
             name="latency",
-            type=MetricType.TIMING,
             description="Request latency",
         )
 
         assert metric.name == "latency"
-        assert metric.type == MetricType.TIMING
         assert metric.description == "Request latency"
 
 

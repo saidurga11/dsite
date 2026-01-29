@@ -32,8 +32,8 @@ class Owners(str, Enum):
 # Define metrics as class constants for type-safety and IDE autocomplete
 class LeverageMetrics:
     """Metrics for the leverage service."""
-    TAGGED = Metric(name="tagged", type=MetricType.COUNTER)
-    MATCH_LATENCY_MS = Metric(name="match_latency_ms", type=MetricType.TIMING)
+    TAGGED = Metric(name="tagged")
+    MATCH_LATENCY_MS = Metric(name="match_latency_ms")
 
 METRICS_REGISTRY: list[ServiceSchema] = [
     ServiceSchema(
@@ -57,7 +57,6 @@ METRICS_REGISTRY: list[ServiceSchema] = [
 | `queue_name` | Yes | Queue from `PulseQueues` enum. Pattern: `PULSE_{SERVICE}_METRICS_QUEUE` |
 | `metrics` | Yes | Tuple of Metric constants from your metrics class |
 | `Metric.name` | Yes | Metric name (e.g., `"tagged"`) |
-| `Metric.type` | No | `MetricType.COUNTER` (default), `GAUGE`, or `TIMING` |
 | `Metric.description` | No | Human-readable description |
 
 ### Step 2: Create EQM Configuration
@@ -258,8 +257,8 @@ WHERE entity_id LIKE 'de_%'
 ```python
 class LeverageMetrics:
     """Metrics for the leverage service."""
-    TAGGED = Metric(name="tagged", type=MetricType.COUNTER)
-    MATCH_LATENCY_MS = Metric(name="match_latency_ms", type=MetricType.TIMING)
+    TAGGED = Metric(name="tagged")
+    MATCH_LATENCY_MS = Metric(name="match_latency_ms")
 
 ServiceSchema(
     service="leverage",

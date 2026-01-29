@@ -2,7 +2,7 @@
 
 import pytest
 
-from pulse import Metric, MetricType
+from pulse import Metric
 from pulse.exceptions import ValidationError
 from pulse.registry import MAX_ENTITY_ID_LENGTH, Owners, PulseQueues, ServiceSchema
 from pulse.utils import validate_entity_id, validate_metric, validate_value
@@ -16,8 +16,8 @@ def sample_service() -> ServiceSchema:
         queue_name=PulseQueues.LEVERAGE_METRICS,
         owner=Owners.DATA_SCIENCE,
         metrics=(
-            Metric(name="tagged", type=MetricType.COUNTER),
-            Metric(name="latency_ms", type=MetricType.TIMING),
+            Metric(name="tagged"),
+            Metric(name="latency_ms"),
         ),
     )
 
@@ -27,13 +27,13 @@ class TestValidateMetric:
 
     def test_validate_registered_metric(self, sample_service: ServiceSchema) -> None:
         """Test validating a registered metric."""
-        tagged_metric = Metric(name="tagged", type=MetricType.COUNTER)
+        tagged_metric = Metric(name="tagged")
         # Should not raise
         validate_metric(tagged_metric, sample_service)
 
     def test_validate_unregistered_metric_raises(self, sample_service: ServiceSchema) -> None:
         """Test that unregistered metric raises ValidationError."""
-        unknown_metric = Metric(name="unknown", type=MetricType.COUNTER)
+        unknown_metric = Metric(name="unknown")
         with pytest.raises(ValidationError) as exc_info:
             validate_metric(unknown_metric, sample_service)
         assert "not registered" in str(exc_info.value)

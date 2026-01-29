@@ -6,14 +6,6 @@ from enum import Enum
 from typing import Optional
 
 
-class MetricType(str, Enum):
-    """Supported metric types."""
-
-    COUNTER = "counter"
-    GAUGE = "gauge"
-    TIMING = "timing"
-
-
 # Validation limits
 MAX_METRIC_NAME_LENGTH = 255
 MAX_ENTITY_ID_LENGTH = 512
@@ -43,7 +35,6 @@ class Metric:
     """Definition of a single metric."""
 
     name: str
-    type: MetricType = MetricType.COUNTER
     description: str = ""
 
 
@@ -76,8 +67,8 @@ class ServiceSchema:
 class LeverageMetrics:
     """Metrics for the leverage service."""
 
-    TAGGED = Metric(name="tagged", type=MetricType.COUNTER)
-    MATCH_LATENCY_MS = Metric(name="match_latency_ms", type=MetricType.TIMING)
+    TAGGED = Metric(name="tagged")
+    MATCH_LATENCY_MS = Metric(name="match_latency_ms")
 
 
 # =============================================================================
