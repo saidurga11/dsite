@@ -6,7 +6,7 @@ Usage in Airflow (context auto-detected):
     from pulse.registry import LeverageMetrics
 
     monitor = AggregationMonitoringService(service="leverage")
-    monitor.recordData(metric=LeverageMetrics.TAGGED, value=1, entity_id="tx_abc123")
+    monitor.recordData(LeverageMetrics.TAGGED, 100)
 
 Usage in tests:
     from pulse import AggregationMonitoringService, AirflowContext, MockQueueAdapter
@@ -18,7 +18,7 @@ Usage in tests:
         airflow_context=context,
         queue_adapter=MockQueueAdapter(),
     )
-    monitor.recordData(metric=LeverageMetrics.TAGGED, value=100, entity_id="test")
+    monitor.recordData(LeverageMetrics.TAGGED, 100)
 """
 
 from pulse.client import AggregationMonitoringService

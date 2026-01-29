@@ -54,15 +54,13 @@ class TestMetricMessage:
             timestamp="2026-01-08T14:30:00.123456Z",
             metric_name="tagged",
             value=1.0,
-            entity_id="tx_abc123",
-            idempotency_key="dag_task_run_tagged_tx123",
+            idempotency_key="dag_task_run_tagged",
         )
 
         assert message.timestamp == "2026-01-08T14:30:00.123456Z"
         assert message.metric_name == "tagged"
         assert message.value == 1.0
-        assert message.entity_id == "tx_abc123"
-        assert message.idempotency_key == "dag_task_run_tagged_tx123"
+        assert message.idempotency_key == "dag_task_run_tagged"
 
     def test_message_to_dict(self) -> None:
         """Test converting message to dictionary."""
@@ -70,7 +68,6 @@ class TestMetricMessage:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="tagged",
             value=1.0,
-            entity_id="tx_123",
             idempotency_key="test_key",
         )
 
@@ -80,7 +77,6 @@ class TestMetricMessage:
             "timestamp": "2026-01-08T14:30:00Z",
             "metric_name": "tagged",
             "value": 1.0,
-            "entity_id": "tx_123",
             "idempotency_key": "test_key",
         }
 
@@ -90,7 +86,6 @@ class TestMetricMessage:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="test",
             value=1.0,
-            entity_id="tx_123",
             idempotency_key="key",
         )
 

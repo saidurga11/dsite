@@ -58,7 +58,6 @@ class MetricMessage:
     timestamp: str
     metric_name: str
     value: float
-    entity_id: str
     idempotency_key: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -67,6 +66,5 @@ class MetricMessage:
             "timestamp": self.timestamp,
             "metric_name": self.metric_name,
             "value": self.value,
-            "entity_id": self.entity_id,
             "idempotency_key": self.idempotency_key,
         }

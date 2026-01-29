@@ -146,17 +146,13 @@ class TestAggregationMonitoringServiceRecordData:
             queue_adapter=mock_queue_adapter,
         )
 
-    def test_record_counter_metric(
+    def test_record_metric(
         self,
         service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test recording a counter metric."""
-        result = service.recordData(
-            metric=LeverageMetrics.TAGGED,
-            value=1,
-            entity_id="tx_123",
-        )
+        """Test recording a metric."""
+        result = service.recordData(LeverageMetrics.TAGGED, 1)
 
         assert result is True
         assert len(mock_queue_adapter.messages) == 1
@@ -164,19 +160,14 @@ class TestAggregationMonitoringServiceRecordData:
         message = mock_queue_adapter.messages[0]
         assert message.metric_name == "tagged"
         assert message.value == 1.0
-        assert message.entity_id == "tx_123"
 
-    def test_record_timing_metric(
+    def test_record_float_value(
         self,
         service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test recording a timing metric."""
-        result = service.recordData(
-            metric=LeverageMetrics.MATCH_LATENCY_MS,
-            value=45.2,
-            entity_id="tx_123",
-        )
+        """Test recording a float value."""
+        result = service.recordData(LeverageMetrics.MATCH_LATENCY_MS, 45.2)
 
         assert result is True
         assert len(mock_queue_adapter.messages) == 1
@@ -192,23 +183,28 @@ class TestAggregationMonitoringServiceRecordData:
     ) -> None:
         """Test that duplicate recordings are rejected."""
         # First record succeeds
-        result1 = service.recordData(
-            metric=LeverageMetrics.TAGGED,
-            value=1,
-            entity_id="tx_123",
-        )
+        result1 = service.recordData(LeverageMetrics.TAGGED, 1)
         assert result1 is True
 
-        # Second record with same entity_id is rejected
-        result2 = service.recordData(
-            metric=LeverageMetrics.TAGGED,
-            value=1,
-            entity_id="tx_123",
-        )
+        # Second record with same metric is rejected (same idempotency key)
+        result2 = service.recordData(LeverageMetrics.TAGGED, 1)
         assert result2 is False
 
         # Only one message stored
         assert len(mock_queue_adapter.messages) == 1
+
+    def test_record_different_metrics_allowed(
+        self,
+        service: AggregationMonitoringService,
+        mock_queue_adapter: MockQueueAdapter,
+    ) -> None:
+        """Test that different metrics can be recorded."""
+        result1 = service.recordData(LeverageMetrics.TAGGED, 1)
+        result2 = service.recordData(LeverageMetrics.MATCH_LATENCY_MS, 50)
+
+        assert result1 is True
+        assert result2 is True
+        assert len(mock_queue_adapter.messages) == 2
 
     def test_record_unregistered_metric_raises(
         self,
@@ -217,41 +213,9 @@ class TestAggregationMonitoringServiceRecordData:
         """Test that recording unregistered metric raises ValidationError."""
         unregistered_metric = Metric(name="unknown_metric")
         with pytest.raises(ValidationError) as exc_info:
-            service.recordData(
-                metric=unregistered_metric,
-                value=1,
-                entity_id="tx_123",
-            )
+            service.recordData(unregistered_metric, 1)
 
         assert "not registered" in str(exc_info.value)
-
-    def test_record_empty_entity_id_raises(
-        self,
-        service: AggregationMonitoringService,
-    ) -> None:
-        """Test that empty entity_id raises ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            service.recordData(
-                metric=LeverageMetrics.TAGGED,
-                value=1,
-                entity_id="",
-            )
-
-        assert "cannot be empty" in str(exc_info.value)
-
-    def test_record_none_entity_id_raises(
-        self,
-        service: AggregationMonitoringService,
-    ) -> None:
-        """Test that None entity_id raises ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            service.recordData(
-                metric=LeverageMetrics.TAGGED,
-                value=1,
-                entity_id=None,  # type: ignore
-            )
-
-        assert "is required" in str(exc_info.value)
 
     def test_record_invalid_value_raises(
         self,
@@ -259,11 +223,7 @@ class TestAggregationMonitoringServiceRecordData:
     ) -> None:
         """Test that invalid value raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            service.recordData(
-                metric=LeverageMetrics.TAGGED,
-                value="not a number",  # type: ignore
-                entity_id="tx_123",
-            )
+            service.recordData(LeverageMetrics.TAGGED, "not a number")  # type: ignore
 
         assert "must be numeric" in str(exc_info.value)
 
@@ -274,19 +234,14 @@ class TestAggregationMonitoringServiceRecordData:
         sample_airflow_context: AirflowContext,
     ) -> None:
         """Test that idempotency key has correct format."""
-        service.recordData(
-            metric=LeverageMetrics.TAGGED,
-            value=1,
-            entity_id="tx_abc123",
-        )
+        service.recordData(LeverageMetrics.TAGGED, 1)
 
         message = mock_queue_adapter.messages[0]
         expected_key = (
             f"{sample_airflow_context.dag_id}_"
             f"{sample_airflow_context.task_id}_"
             f"{sample_airflow_context.run_id}_"
-            "tagged_"
-            "tx_abc123"
+            "tagged"
         )
         assert message.idempotency_key == expected_key
 
@@ -314,32 +269,30 @@ class TestAggregationMonitoringServiceRecordDataBatch:
     ) -> None:
         """Test batch recording multiple metrics."""
         metrics = [
-            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},
-            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_002"},
-            {"metric": LeverageMetrics.MATCH_LATENCY_MS, "value": 50.5, "entity_id": "tx_003"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1},
+            {"metric": LeverageMetrics.MATCH_LATENCY_MS, "value": 50.5},
         ]
 
         result = service.recordDataBatch(metrics)
 
-        assert result == 3
-        assert len(mock_queue_adapter.messages) == 3
+        assert result == 2
+        assert len(mock_queue_adapter.messages) == 2
 
     def test_record_batch_with_duplicates(
         self,
         service: AggregationMonitoringService,
         mock_queue_adapter: MockQueueAdapter,
     ) -> None:
-        """Test batch recording with duplicate entity_ids."""
+        """Test batch recording with duplicate metrics."""
         metrics = [
-            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},
-            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},  # Duplicate
-            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_002"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1},
+            {"metric": LeverageMetrics.TAGGED, "value": 2},  # Duplicate metric name
         ]
 
         result = service.recordDataBatch(metrics)
 
-        assert result == 2  # Only 2 unique
-        assert len(mock_queue_adapter.messages) == 2
+        assert result == 1  # Only 1 unique (same idempotency key)
+        assert len(mock_queue_adapter.messages) == 1
 
     def test_record_batch_validation_error_shows_index(
         self,
@@ -348,9 +301,8 @@ class TestAggregationMonitoringServiceRecordDataBatch:
         """Test that validation errors show the metric index."""
         unregistered_metric = Metric(name="unknown_metric")
         metrics = [
-            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},
-            {"metric": unregistered_metric, "value": 1, "entity_id": "tx_002"},  # Invalid
-            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_003"},
+            {"metric": LeverageMetrics.TAGGED, "value": 1},
+            {"metric": unregistered_metric, "value": 1},  # Invalid
         ]
 
         with pytest.raises(ValidationError) as exc_info:
@@ -373,7 +325,7 @@ class TestAggregationMonitoringServiceRecordDataBatch:
     ) -> None:
         """Test that missing required field raises ValidationError."""
         metrics = [
-            {"metric": LeverageMetrics.TAGGED, "entity_id": "tx_001"},  # Missing value
+            {"metric": LeverageMetrics.TAGGED},  # Missing value
         ]
 
         with pytest.raises(ValidationError) as exc_info:
@@ -424,27 +376,15 @@ class TestAggregationMonitoringServiceIntegration:
         )
 
         # Record first metric
-        result1 = service.recordData(
-            metric=LeverageMetrics.TAGGED,
-            value=1,
-            entity_id="tx_abc123",
-        )
+        result1 = service.recordData(LeverageMetrics.TAGGED, 150)
         assert result1 is True
 
         # Record second metric
-        result2 = service.recordData(
-            metric=LeverageMetrics.MATCH_LATENCY_MS,
-            value=45.2,
-            entity_id="tx_def456",
-        )
+        result2 = service.recordData(LeverageMetrics.MATCH_LATENCY_MS, 45.2)
         assert result2 is True
 
         # Try duplicate - should be rejected
-        result3 = service.recordData(
-            metric=LeverageMetrics.TAGGED,
-            value=1,
-            entity_id="tx_abc123",
-        )
+        result3 = service.recordData(LeverageMetrics.TAGGED, 200)
         assert result3 is False
 
         # Verify messages
@@ -468,15 +408,14 @@ class TestAggregationMonitoringServiceIntegration:
         )
 
         metrics = [
-            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_001"},
-            {"metric": LeverageMetrics.TAGGED, "value": 1, "entity_id": "tx_002"},
-            {"metric": LeverageMetrics.MATCH_LATENCY_MS, "value": 45.2, "entity_id": "tx_003"},
+            {"metric": LeverageMetrics.TAGGED, "value": 100},
+            {"metric": LeverageMetrics.MATCH_LATENCY_MS, "value": 45.2},
         ]
 
         result = service.recordDataBatch(metrics)
 
-        assert result == 3
-        assert len(mock_queue_adapter.messages) == 3
+        assert result == 2
+        assert len(mock_queue_adapter.messages) == 2
 
 
 class TestAirflowContextAutoDetect:

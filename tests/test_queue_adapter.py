@@ -21,7 +21,6 @@ class TestMockQueueAdapter:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="tagged",
             value=1.0,
-            entity_id="tx_abc123",
             idempotency_key="unique_key_1",
         )
 
@@ -68,7 +67,6 @@ class TestMockQueueAdapter:
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=float(i),
-                entity_id=f"tx_{i}",
                 idempotency_key=f"key_{i}",
             )
             for i in range(5)
@@ -90,7 +88,6 @@ class TestMockQueueAdapter:
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=float(i),
-                entity_id=f"tx_{i}",
                 idempotency_key=f"key_{i}",
             )
             for i in range(3)
@@ -111,7 +108,6 @@ class TestMockQueueAdapter:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="tagged",
             value=1.0,
-            entity_id="tx_first",
             idempotency_key="existing_key",
         )
         adapter.enqueue(first_message)
@@ -122,21 +118,18 @@ class TestMockQueueAdapter:
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=2.0,
-                entity_id="tx_new_1",
                 idempotency_key="new_key_1",
             ),
             MetricMessage(
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=3.0,
-                entity_id="tx_dup",
                 idempotency_key="existing_key",  # Duplicate!
             ),
             MetricMessage(
                 timestamp="2026-01-08T14:30:00Z",
                 metric_name="tagged",
                 value=4.0,
-                entity_id="tx_new_2",
                 idempotency_key="new_key_2",
             ),
         ]
@@ -188,7 +181,6 @@ class TestMockQueueAdapter:
             timestamp="2026-01-08T14:30:00Z",
             metric_name="tagged",
             value=1.0,
-            entity_id="tx_123",
             idempotency_key="same_key",
         )
 

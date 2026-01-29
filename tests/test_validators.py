@@ -4,8 +4,8 @@ import pytest
 
 from pulse import Metric
 from pulse.exceptions import ValidationError
-from pulse.registry import MAX_ENTITY_ID_LENGTH, Owners, PulseQueues, ServiceSchema
-from pulse.utils import validate_entity_id, validate_metric, validate_value
+from pulse.registry import Owners, PulseQueues, ServiceSchema
+from pulse.utils import validate_metric, validate_value
 
 
 @pytest.fixture
@@ -111,40 +111,3 @@ class TestValidateValue:
         with pytest.raises(ValidationError) as exc_info:
             validate_value([1, 2, 3])  # type: ignore
         assert "must be numeric" in str(exc_info.value)
-
-
-class TestValidateEntityId:
-    """Tests for validate_entity_id function."""
-
-    def test_validate_valid_entity_id(self) -> None:
-        """Test validating a valid entity ID."""
-        assert validate_entity_id("tx_123") == "tx_123"
-
-    def test_validate_empty_entity_id_raises(self) -> None:
-        """Test that empty entity_id raises ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            validate_entity_id("")
-        assert "cannot be empty" in str(exc_info.value)
-
-    def test_validate_whitespace_entity_id_raises(self) -> None:
-        """Test that whitespace entity_id raises ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            validate_entity_id("   ")
-        assert "cannot be empty" in str(exc_info.value)
-
-    def test_validate_none_entity_id_raises(self) -> None:
-        """Test that None entity_id raises ValidationError."""
-        with pytest.raises(ValidationError) as exc_info:
-            validate_entity_id(None)
-        assert "is required" in str(exc_info.value)
-
-    def test_validate_entity_id_too_long_raises(self) -> None:
-        """Test that too long entity_id raises ValidationError."""
-        long_id = "a" * (MAX_ENTITY_ID_LENGTH + 1)
-        with pytest.raises(ValidationError) as exc_info:
-            validate_entity_id(long_id)
-        assert "maximum length" in str(exc_info.value)
-
-    def test_validate_converts_int_to_string(self) -> None:
-        """Test that integer entity_id is converted to string."""
-        assert validate_entity_id(12345) == "12345"

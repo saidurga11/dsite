@@ -8,7 +8,7 @@ from pulse.exceptions import ConfigurationError, ValidationError
 from pulse.models import AirflowContext, MetricMessage
 from pulse.queue_adapter import EQMAdapter, QueueAdapter
 from pulse.registry import Metric, ServiceSchema, get_service_registry, list_services
-from pulse.utils import build_idempotency_key, validate_entity_id, validate_metric, validate_value
+from pulse.utils import build_idempotency_key, validate_metric, validate_value
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class AggregationMonitoringService:
         from pulse.registry import LeverageMetrics
 
         monitor = AggregationMonitoringService(service="leverage")
-        monitor.recordData(metric=LeverageMetrics.TAGGED, value=1, entity_id="tx_abc123")
+        monitor.recordData(LeverageMetrics.TAGGED, 100)
 
     Usage in tests:
         from pulse import AggregationMonitoringService, AirflowContext, MockQueueAdapter
@@ -36,7 +36,7 @@ class AggregationMonitoringService:
             airflow_context=context,
             queue_adapter=MockQueueAdapter(),
         )
-        monitor.recordData(metric=LeverageMetrics.TAGGED, value=100, entity_id="test")
+        monitor.recordData(LeverageMetrics.TAGGED, 100)
     """
 
     def __init__(
@@ -95,7 +95,6 @@ class AggregationMonitoringService:
         self,
         metric: Metric,
         value: Union[int, float],
-        entity_id: str,
     ) -> bool:
         """
         Record a single metric.
@@ -103,7 +102,6 @@ class AggregationMonitoringService:
         Args:
             metric: Metric object from registry (e.g., LeverageMetrics.TAGGED)
             value: Numeric value
-            entity_id: Unique identifier for deduplication
 
         Returns:
             True if sent, False if rejected (duplicate or error)
@@ -111,17 +109,13 @@ class AggregationMonitoringService:
         # Validate
         validate_metric(metric, self._service)
         validated_value = validate_value(value)
-        validated_entity_id = validate_entity_id(entity_id)
 
         # Build message
         message = MetricMessage(
             timestamp=datetime.now(timezone.utc).isoformat(),
             metric_name=metric.name,
             value=validated_value,
-            entity_id=validated_entity_id,
-            idempotency_key=build_idempotency_key(
-                self._context, metric.name, validated_entity_id
-            ),
+            idempotency_key=build_idempotency_key(self._context, metric.name),
         )
 
         try:
@@ -134,7 +128,7 @@ class AggregationMonitoringService:
         """
         Record multiple metrics.
 
-        Each dict must have: metric (Metric object), value, entity_id
+        Each dict must have: metric (Metric object), value
 
         Returns:
             Number of metrics successfully sent
@@ -157,21 +151,15 @@ class AggregationMonitoringService:
                 if value is None:
                     raise ValidationError("value is required")
 
-                entity_id = m.get("entity_id")
-
                 # Validate
                 validate_metric(metric, self._service)
                 validated_value = validate_value(value)
-                validated_entity_id = validate_entity_id(entity_id)
 
                 messages.append(MetricMessage(
                     timestamp=datetime.now(timezone.utc).isoformat(),
                     metric_name=metric.name,
                     value=validated_value,
-                    entity_id=validated_entity_id,
-                    idempotency_key=build_idempotency_key(
-                        self._context, metric.name, validated_entity_id
-                    ),
+                    idempotency_key=build_idempotency_key(self._context, metric.name),
                 ))
             except ValidationError as e:
                 raise ValidationError(f"Metric at index {i}: {e}")

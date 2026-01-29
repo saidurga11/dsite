@@ -103,32 +103,28 @@ def process_transactions(**context):
 
     # 2. Your business logic - pre-aggregate the count
     transactions = fetch_transactions()
-    de_mca_count = sum(1 for t in transactions if t.caller == "de" and t.category == "mca")
+    tagged_count = len(transactions)
 
     # 3. Record ONCE per metric per DAG run
-    monitor.recordData(
-        metric=LeverageMetrics.TAGGED,
-        value=de_mca_count,
-        entity_id="de_mca",
-    )
+    monitor.recordData(LeverageMetrics.TAGGED, tagged_count)
 ```
 
 ### Method Signature
 
 ```python
-monitor.recordData(
-    metric: Metric,        # Metric object from registry (e.g., LeverageMetrics.TAGGED)
-    value: int | float,    # Pre-aggregated value
-    entity_id: str,        # Unique identifier for deduplication
-)
+monitor.recordData(metric, value)
 ```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `metric` | `Metric` | Metric object from registry (e.g., `LeverageMetrics.TAGGED`) |
+| `value` | `int \| float` | Pre-aggregated value |
 
 ### Recording Multiple Metrics (Batch)
 
 Use `recordDataBatch` to record multiple metrics at once:
 
 ```python
-from collections import Counter
 from pulse import AggregationMonitoringService
 from pulse.registry import LeverageMetrics
 
@@ -136,16 +132,11 @@ def process_transactions(**context):
     monitor = AggregationMonitoringService(service="leverage")
 
     transactions = fetch_transactions()
+    latency = calculate_latency()
 
-    # Pre-aggregate by (caller, category)
-    counts = Counter()
-    for txn in transactions:
-        counts[(txn.caller, txn.category)] += 1
-
-    # Record all combinations in a single batch
     metrics = [
-        {"metric": LeverageMetrics.TAGGED, "value": count, "entity_id": f"{caller}_{category}"}
-        for (caller, category), count in counts.items()
+        {"metric": LeverageMetrics.TAGGED, "value": len(transactions)},
+        {"metric": LeverageMetrics.MATCH_LATENCY_MS, "value": latency},
     ]
     monitor.recordDataBatch(metrics)
 ```
@@ -153,13 +144,12 @@ def process_transactions(**context):
 ### What NOT to Do
 
 ```python
-# ❌ WRONG: Recording inside a loop (one message per transaction)
+# WRONG: Recording inside a loop (one message per transaction)
 for txn in transactions:
-    monitor.recordData(metric=LeverageMetrics.TAGGED, value=1, entity_id=txn.id)
+    monitor.recordData(LeverageMetrics.TAGGED, 1)
 
-# ✅ CORRECT: Pre-aggregate, then record once
-count = sum(1 for t in transactions if t.caller == "de" and t.category == "mca")
-monitor.recordData(metric=LeverageMetrics.TAGGED, value=count, entity_id="de_mca")
+# CORRECT: Pre-aggregate, then record once
+monitor.recordData(LeverageMetrics.TAGGED, len(transactions))
 ```
 
 ---
@@ -170,7 +160,7 @@ monitor.recordData(metric=LeverageMetrics.TAGGED, value=count, entity_id="de_mca
 
 | Column | Type | Example |
 |--------|------|---------|
-| `row_id` | VARCHAR(512) | `leverage_dag_process_scheduled__2026-01-21T14:00:00_tagged_de_mca` |
+| `row_id` | VARCHAR(512) | `leverage_dag_process_scheduled__2026-01-21T14:00:00_tagged` |
 | `metric_name` | VARCHAR(255) | `tagged` |
 | `metric_value` | NUMERIC | `150` |
 | `created_at` | TIMESTAMP | `2026-01-21 14:30:00+00` |
@@ -206,13 +196,6 @@ GROUP BY hour, metric_name
 ORDER BY hour DESC
 ```
 
-**Filter by entity_id pattern:**
-
-```sql
-SELECT * FROM monitoring_source_metrics
-WHERE entity_id LIKE 'de_%'
-```
-
 ---
 
 ## Troubleshooting
@@ -225,7 +208,7 @@ WHERE entity_id LIKE 'de_%'
    ```
 
 2. Check consumer DAG:
-   - Go to Airflow → DAG: `metrics.source_consumer`
+   - Go to Airflow > DAG: `metrics.source_consumer`
    - Verify last run was successful
    - Check task logs for your queue name
 
@@ -242,8 +225,6 @@ WHERE entity_id LIKE 'de_%'
 | `Service 'xyz' not registered` | Service not in registry | Add `ServiceSchema` to `METRICS_REGISTRY` in `pulse/registry.py` |
 | `Metric 'abc' is not registered for service` | Metric not defined for this service | Add `Metric` to your service's `metrics` tuple |
 | `metric must be a Metric object` | Passed string instead of Metric | Use `LeverageMetrics.TAGGED` instead of `"tagged"` |
-| `entity_id is required` | Didn't provide entity_id | Add `entity_id` parameter |
-| `entity_id cannot be empty` | Empty string passed | Use meaningful identifier |
 | `Value must be numeric` | Wrong type | Use `int` or `float` value |
 
 ---
@@ -285,7 +266,6 @@ QueueManagerConfigurations:
 ### DAG Code
 
 ```python
-from collections import Counter
 from pulse import AggregationMonitoringService
 from pulse.registry import LeverageMetrics
 
@@ -293,18 +273,10 @@ def process_leverage(**context):
     monitor = AggregationMonitoringService(service="leverage")
 
     transactions = fetch_leverage_transactions()
+    latency = calculate_match_latency()
 
-    # Pre-aggregate
-    counts = Counter()
-    for txn in transactions:
-        counts[(txn.caller, txn.category)] += 1
-
-    # Record all in a single batch
-    metrics = [
-        {"metric": LeverageMetrics.TAGGED, "value": count, "entity_id": f"{caller}_{category}"}
-        for (caller, category), count in counts.items()
-    ]
-    monitor.recordDataBatch(metrics)
+    monitor.recordData(LeverageMetrics.TAGGED, len(transactions))
+    monitor.recordData(LeverageMetrics.MATCH_LATENCY_MS, latency)
 ```
 
 Example queries for Grafana can be found here: [Example Grafana Queries for Leverage Tagging Requirements](#)
@@ -317,7 +289,7 @@ Example queries for Grafana can be found here: [Example Grafana Queries for Leve
 A: Once per metric per DAG run. Pre-aggregate in your code.
 
 **Q: What if my DAG retries?**
-A: Safe. Same `row_id` is generated from `dag_id + task_id + run_id + metric_name + entity_id`, duplicate insert is silently ignored.
+A: Safe. Same idempotency key is generated from `dag_id + task_id + run_id + metric_name`, duplicate insert is silently ignored.
 
 **Q: When do metrics appear in Grafana?**
 A: Within 1 day. Consumer DAG (`metrics.aggregate_consumer`) runs once per day.
@@ -330,6 +302,3 @@ A: Yes. Add to the enum in `registry.py`, submit PR.
 
 **Q: What's the max metric name length?**
 A: 255 characters. Keep names short.
-
-**Q: What's the max entity_id length?**
-A: 512 characters.
